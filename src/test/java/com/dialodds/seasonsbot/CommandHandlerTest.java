@@ -7,13 +7,15 @@ import org.mockito.MockitoAnnotations;
 import net.dv8tion.jda.api.entities.User;
 import net.dv8tion.jda.api.entities.channel.unions.MessageChannelUnion;
 import net.dv8tion.jda.api.events.message.MessageReceivedEvent;
+import net.dv8tion.jda.api.requests.RestAction;
 import net.dv8tion.jda.api.requests.restaction.MessageCreateAction;
 import net.dv8tion.jda.api.entities.Message;
+import net.dv8tion.jda.api.entities.MessageEmbed;
 import org.springframework.http.ResponseEntity;
 import java.util.*;
+import java.time.Instant;
 
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 class CommandHandlerTest {
@@ -38,18 +40,19 @@ class CommandHandlerTest {
     @Mock
     private Message message;
 
+    @SuppressWarnings("unchecked")
     @BeforeEach
-void setUp() {
-    MockitoAnnotations.openMocks(this);
-    commandHandler = new CommandHandler(apiClient);
+    void setUp() {
+        MockitoAnnotations.openMocks(this);
+        commandHandler = new CommandHandler(apiClient);
 
-    when(event.getAuthor()).thenReturn(user);
-    when(event.getChannel()).thenReturn(channel);
-    when(channel.sendMessage(anyString())).thenReturn(messageAction);
-    when(channel.sendMessageEmbeds(any())).thenReturn(messageAction);
-    verify(messageAction).queue();
-    when(event.getMessage()).thenReturn(message);
-}
+        when(event.getAuthor()).thenReturn(user);
+        when(event.getChannel()).thenReturn(channel);
+        when(channel.sendMessage(anyString())).thenReturn(messageAction);
+        when(channel.sendMessageEmbeds(any(MessageEmbed.class))).thenReturn(messageAction);
+        when(event.getMessage()).thenReturn(message);
+        when(channel.sendTyping()).thenReturn(mock(RestAction.class));
+    }
 
     @Test
     void testCreateSeason() {
@@ -59,7 +62,7 @@ void setUp() {
         commandHandler.onMessageReceived(event);
 
         verify(apiClient).createSeason(1, 17, 1000);
-        verify(channel).sendMessageEmbeds(any());
+        verify(channel).sendMessageEmbeds(any(MessageEmbed.class));
     }
 
     @Test
@@ -67,19 +70,17 @@ void setUp() {
         when(message.getContentRaw()).thenReturn("!join_season 1");
         when(user.getId()).thenReturn("123456");
         when(user.getName()).thenReturn("TestUser");
-        when(apiClient.createUser("123456", "TestUser")).thenReturn(ResponseEntity.ok(1));
-        when(apiClient.addUserToSeason(1, 1)).thenReturn(ResponseEntity.ok().build());
+        when(apiClient.createUserAndJoinSeason("123456", "TestUser", 1)).thenReturn(ResponseEntity.ok().build());
 
         commandHandler.onMessageReceived(event);
 
-        verify(apiClient).createUser("123456", "TestUser");
-        verify(apiClient).addUserToSeason(1, 1);
-        verify(channel).sendMessageEmbeds(any());
+        verify(apiClient).createUserAndJoinSeason("123456", "TestUser", 1);
+        verify(channel).sendMessageEmbeds(any(MessageEmbed.class));
     }
 
     @Test
     void testPlaceBet() {
-        when(event.getMessage().getContentRaw()).thenReturn("!bet 1 1985 HOME 125");
+        when(message.getContentRaw()).thenReturn("!bet 1 1985 HOME 125");
         when(user.getId()).thenReturn("123456");
         when(user.getName()).thenReturn("TestUser");
         when(apiClient.createUser("123456", "TestUser")).thenReturn(ResponseEntity.ok(1));
@@ -93,12 +94,12 @@ void setUp() {
         verify(apiClient).getGameById(1985);
         verify(apiClient).getUserCoins(1, 1);
         verify(apiClient).placeBet(1, 1, 1985, "HOME", 125);
-        verify(channel).sendMessageEmbeds(any());
+        verify(channel).sendMessageEmbeds(any(MessageEmbed.class));
     }
 
     @Test
     void testMyBets() {
-        when(event.getMessage().getContentRaw()).thenReturn("!my_bets 1");
+        when(message.getContentRaw()).thenReturn("!my_bets 1");
         when(user.getId()).thenReturn("123456");
         when(user.getName()).thenReturn("TestUser");
         when(apiClient.createUser("123456", "TestUser")).thenReturn(ResponseEntity.ok(1));
@@ -108,12 +109,12 @@ void setUp() {
 
         verify(apiClient).createUser("123456", "TestUser");
         verify(apiClient).getUserBets(1, 1);
-        verify(channel).sendMessageEmbeds(any());
+        verify(channel).sendMessageEmbeds(any(MessageEmbed.class));
     }
 
     @Test
     void testBalance() {
-        when(event.getMessage().getContentRaw()).thenReturn("!balance 1");
+        when(message.getContentRaw()).thenReturn("!balance 1");
         when(user.getId()).thenReturn("123456");
         when(user.getName()).thenReturn("TestUser");
         when(apiClient.createUser("123456", "TestUser")).thenReturn(ResponseEntity.ok(1));
@@ -125,82 +126,97 @@ void setUp() {
         verify(apiClient).createUser("123456", "TestUser");
         verify(apiClient).getUserCoins(1, 1);
         verify(apiClient).getSeasonById(1);
-        verify(channel).sendMessageEmbeds(any());
+        verify(channel).sendMessageEmbeds(any(MessageEmbed.class));
     }
 
     @Test
     void testLeaderboard() {
-        when(event.getMessage().getContentRaw()).thenReturn("!leaderboard 1");
+        when(message.getContentRaw()).thenReturn("!leaderboard 1");
         when(apiClient.getUsersBySeason(1)).thenReturn(ResponseEntity.ok(createMockLeaderboard()));
+        when(user.getId()).thenReturn("123456");
 
         commandHandler.onMessageReceived(event);
 
         verify(apiClient).getUsersBySeason(1);
-        verify(channel).sendMessageEmbeds(any());
+        verify(channel).sendMessageEmbeds(any(MessageEmbed.class));
     }
 
     @Test
     void testSeasonInfo() {
-        when(event.getMessage().getContentRaw()).thenReturn("!season_info 1");
+        when(message.getContentRaw()).thenReturn("!season_info 1");
         when(apiClient.getSeasonById(1)).thenReturn(ResponseEntity.ok(createMockSeason()));
 
         commandHandler.onMessageReceived(event);
 
         verify(apiClient).getSeasonById(1);
-        verify(channel).sendMessageEmbeds(any());
+        verify(channel).sendMessageEmbeds(any(MessageEmbed.class));
     }
 
     @Test
     void testActiveSeasons() {
-        when(event.getMessage().getContentRaw()).thenReturn("!active_seasons");
+        when(message.getContentRaw()).thenReturn("!active_seasons");
         when(apiClient.getActiveSeasons()).thenReturn(ResponseEntity.ok(createMockActiveSeasons()));
 
         commandHandler.onMessageReceived(event);
 
         verify(apiClient).getActiveSeasons();
-        verify(channel).sendMessageEmbeds(any());
+        verify(channel).sendMessageEmbeds(any(MessageEmbed.class));
     }
 
     @Test
     void testNflWeeks() {
-        when(event.getMessage().getContentRaw()).thenReturn("!nfl_weeks");
+        when(message.getContentRaw()).thenReturn("!nfl_weeks");
         when(apiClient.getNflWeeks()).thenReturn(ResponseEntity.ok(Arrays.asList(1, 2, 3, 4, 5)));
 
         commandHandler.onMessageReceived(event);
 
         verify(apiClient).getNflWeeks();
-        verify(channel).sendMessageEmbeds(any());
+        verify(channel).sendMessageEmbeds(any(MessageEmbed.class));
     }
 
     @Test
     void testNflGames() {
-        when(event.getMessage().getContentRaw()).thenReturn("!nfl_games 1");
+        when(message.getContentRaw()).thenReturn("!nfl_games 1");
         when(apiClient.getNflGamesByWeek(1)).thenReturn(ResponseEntity.ok(createMockGamesList()));
 
         commandHandler.onMessageReceived(event);
 
         verify(apiClient).getNflGamesByWeek(1);
-        verify(channel).sendMessageEmbeds(any());
+        verify(channel).sendMessageEmbeds(any(MessageEmbed.class));
     }
 
     @Test
     void testTeamSchedule() {
-        when(event.getMessage().getContentRaw()).thenReturn("!team_schedule Dallas Cowboys");
+        when(message.getContentRaw()).thenReturn("!team_schedule Dallas Cowboys");
         when(apiClient.getTeamSchedule("Dallas Cowboys")).thenReturn(ResponseEntity.ok(createMockGamesList()));
 
         commandHandler.onMessageReceived(event);
 
         verify(apiClient).getTeamSchedule("Dallas Cowboys");
-        verify(channel).sendMessageEmbeds(any());
+        verify(channel).sendMessageEmbeds(any(MessageEmbed.class));
     }
 
     @Test
     void testHelp() {
-        when(event.getMessage().getContentRaw()).thenReturn("!help");
+        when(message.getContentRaw()).thenReturn("!help");
 
         commandHandler.onMessageReceived(event);
 
-        verify(channel).sendMessageEmbeds(any());
+        verify(channel).sendMessageEmbeds(any(MessageEmbed.class));
+    }
+
+    @Test
+    void testDeleteSeason() {
+        when(message.getContentRaw()).thenReturn("!delete_season 1");
+        Map<String, Object> response = new HashMap<>();
+        response.put("deleted", true);
+        response.put("message", "Season deleted successfully");
+        when(apiClient.deleteSeason(1)).thenReturn(ResponseEntity.ok(response));
+
+        commandHandler.onMessageReceived(event);
+
+        verify(apiClient).deleteSeason(1);
+        verify(channel).sendMessageEmbeds(any(MessageEmbed.class));
     }
 
     // Helper methods to create mock data
@@ -216,16 +232,9 @@ void setUp() {
         return game;
     }
 
-    private List<Map<String, Object>> createMockBetsList() {
-        List<Map<String, Object>> bets = new ArrayList<>();
-        Map<String, Object> bet = new HashMap<>();
-        bet.put("id", 1);
-        bet.put("home_team", "Dallas Cowboys");
-        bet.put("away_team", "New York Giants");
-        bet.put("bet_type", "HOME");
-        bet.put("amount", 125);
-        bet.put("result", "WIN");
-        bets.add(bet);
+    private List<Bet> createMockBetsList() {
+        List<Bet> bets = new ArrayList<>();
+        bets.add(new Bet(1, 1, 1, 1985, "HOME", 125, new Date(), "WIN", "Dallas Cowboys", "New York Giants"));
         return bets;
     }
 
@@ -239,28 +248,22 @@ void setUp() {
         return season;
     }
 
-    private List<Map<String, Object>> createMockLeaderboard() {
-        List<Map<String, Object>> leaderboard = new ArrayList<>();
-        Map<String, Object> user1 = new HashMap<>();
-        user1.put("username", "User1");
-        user1.put("coins", 1500);
-        Map<String, Object> user2 = new HashMap<>();
-        user2.put("username", "User2");
-        user2.put("coins", 1200);
-        leaderboard.add(user1);
-        leaderboard.add(user2);
+    private List<com.dialodds.seasonsbot.User> createMockLeaderboard() {
+        List<com.dialodds.seasonsbot.User> leaderboard = new ArrayList<>();
+        leaderboard.add(new com.dialodds.seasonsbot.User(1, "123", "User1", 1500));
+        leaderboard.add(new com.dialodds.seasonsbot.User(2, "456", "User2", 1200));
         return leaderboard;
     }
 
-    private List<Map<String, Object>> createMockActiveSeasons() {
-        List<Map<String, Object>> seasons = new ArrayList<>();
-        seasons.add(createMockSeason());
+    private List<Season> createMockActiveSeasons() {
+        List<Season> seasons = new ArrayList<>();
+        seasons.add(new Season(1, 1, 17, 1000, Date.from(Instant.now()), true));
         return seasons;
     }
 
-    private List<Map<String, Object>> createMockGamesList() {
-        List<Map<String, Object>> games = new ArrayList<>();
-        games.add(createMockGame());
+    private List<Game> createMockGamesList() {
+        List<Game> games = new ArrayList<>();
+        games.add(new Game(1985, 1, "Dallas Cowboys", "New York Giants", new Date(), 0, 0, "SCHEDULED", 1.8, 2.1));
         return games;
     }
 }

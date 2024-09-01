@@ -12,7 +12,6 @@ import net.dv8tion.jda.api.exceptions.InsufficientPermissionException;
 import net.dv8tion.jda.api.hooks.ListenerAdapter;
 import net.dv8tion.jda.api.interactions.components.buttons.Button;
 import net.dv8tion.jda.api.utils.FileUpload;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
@@ -27,6 +26,7 @@ import java.time.LocalDate;
 import java.time.Month;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
 import java.time.temporal.ChronoUnit;
 import java.util.*;
 import java.util.List;
@@ -45,13 +45,18 @@ public class CommandHandler extends ListenerAdapter {
     private final ApiClient apiClient;
 
     // Caches and Executors
-    private final ConcurrentMap<String, Boolean> processedMessages = new ConcurrentHashMap<>();
+    private final ConcurrentMap<String, Boolean> processedMessages;
     private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
     private final Map<String, List<Map<String, Object>>> activeGamesCache = new HashMap<>();
 
-    @Autowired
     public CommandHandler(ApiClient apiClient) {
         this.apiClient = apiClient;
+        this.processedMessages = new ConcurrentHashMap<>();
+    }
+
+    CommandHandler(ApiClient apiClient, ConcurrentMap<String, Boolean> processedMessages) {
+        this.apiClient = apiClient;
+        this.processedMessages = processedMessages;
     }
 
     // Main message handler
@@ -148,7 +153,15 @@ public class CommandHandler extends ListenerAdapter {
             int initialCoins = Integer.parseInt(args[3]);
 
             ResponseEntity<Integer> response = apiClient.createSeason(startWeek, endWeek, initialCoins);
-            int seasonId = response.getBody();
+            int seasonId = Optional.ofNullable(response.getBody()).orElse(-1);
+
+            if (seasonId == -1) {
+                sendErrorEmbed(event, "Season Creation Failed",
+                        "The server returned an empty response. Please try again.");
+                return;
+            }
+
+            // Continue with the rest of your code using seasonId
 
             EmbedBuilder successEmbed = new EmbedBuilder()
                     .setColor(Color.GREEN)
@@ -181,14 +194,14 @@ public class CommandHandler extends ListenerAdapter {
                     "Example: `!join_season 123`");
             return;
         }
-    
+
         try {
             int seasonId = Integer.parseInt(args[1]);
             String discordId = event.getAuthor().getId();
             String username = event.getAuthor().getName();
-    
+
             ResponseEntity<Void> joinResponse = apiClient.createUserAndJoinSeason(discordId, username, seasonId);
-    
+
             if (joinResponse.getStatusCode().is2xxSuccessful()) {
                 EmbedBuilder successEmbed = new EmbedBuilder()
                         .setColor(Color.GREEN)
@@ -199,7 +212,7 @@ public class CommandHandler extends ListenerAdapter {
                         .setTimestamp(Instant.now());
                 event.getChannel().sendMessageEmbeds(successEmbed.build()).queue();
             } else {
-                throw new Exception("Failed to join season. Status code: " + joinResponse.getStatusCodeValue());
+                throw new Exception("Failed to join season. Status code: " + joinResponse.getStatusCode().value());
             }
         } catch (NumberFormatException e) {
             sendErrorEmbed(event, "Invalid Season ID",
@@ -220,26 +233,27 @@ public class CommandHandler extends ListenerAdapter {
                     "Example: `!delete_season 123`");
             return;
         }
-    
+
         try {
             int seasonId = Integer.parseInt(args[1]);
-    
-            ResponseEntity<Map> deleteResponse = apiClient.deleteSeason(seasonId);
-    
+
+            ResponseEntity<Map<String, Object>> deleteResponse = apiClient.deleteSeason(seasonId);
+
             if (deleteResponse.getStatusCode().is2xxSuccessful()) {
                 Map<String, Object> responseBody = deleteResponse.getBody();
                 if (responseBody != null) {
                     boolean deleted = (boolean) responseBody.get("deleted");
                     String message = (String) responseBody.get("message");
-                    
+
                     if (deleted) {
                         EmbedBuilder successEmbed = new EmbedBuilder()
-                            .setColor(Color.GREEN)
-                            .setTitle("Season Deleted Successfully")
-                            .setDescription(message)
-                            .setFooter("Deleted by " + event.getAuthor().getName(), event.getAuthor().getEffectiveAvatarUrl())
-                            .setTimestamp(Instant.now());
-    
+                                .setColor(Color.GREEN)
+                                .setTitle("Season Deleted Successfully")
+                                .setDescription(message)
+                                .setFooter("Deleted by " + event.getAuthor().getName(),
+                                        event.getAuthor().getEffectiveAvatarUrl())
+                                .setTimestamp(Instant.now());
+
                         event.getChannel().sendMessageEmbeds(successEmbed.build()).queue();
                     } else {
                         sendErrorEmbed(event, "Failed to Delete Season", message);
@@ -248,7 +262,7 @@ public class CommandHandler extends ListenerAdapter {
                     throw new Exception("Server returned an empty response");
                 }
             } else {
-                throw new Exception("Failed to delete season. Status code: " + deleteResponse.getStatusCodeValue());
+                throw new Exception("Failed to delete season. Status code: " + deleteResponse.getStatusCode().value());
             }
         } catch (NumberFormatException e) {
             sendErrorEmbed(event, "Invalid Season ID",
@@ -287,34 +301,70 @@ public class CommandHandler extends ListenerAdapter {
             String username = event.getAuthor().getName();
 
             ResponseEntity<Integer> userResponse = apiClient.createUser(discordId, username);
-            int userId = userResponse.getBody();
+            Integer userIdWrapper = userResponse.getBody();
+            if (userIdWrapper == null) {
+                sendErrorEmbed(event, "User Creation Failed",
+                        "Failed to create or retrieve user. Please try again.");
+                return;
+            }
+            int userId = userIdWrapper.intValue();
 
-            ResponseEntity<Map> gameResponse = apiClient.getGameById(gameId);
+            ResponseEntity<Map<String, Object>> gameResponse = apiClient.getGameById(gameId);
             if (gameResponse.getStatusCode() == HttpStatus.NOT_FOUND) {
                 throw new IllegalArgumentException("Game not found. Please check the game ID.");
             }
             Map<String, Object> gameDetails = gameResponse.getBody();
+            if (gameDetails == null) {
+                sendErrorEmbed(event, "Game Details Retrieval Failed",
+                        "Failed to retrieve game details. Please try again.");
+                return;
+            }
 
-            Instant commenceTime = Instant.parse((String) gameDetails.get("commence_time"));
-            if (Instant.now().isAfter(commenceTime)) {
-                sendErrorEmbed(event, "Game Already Started",
-                        "Betting is closed for this game as it has already started.",
-                        "Game: " + gameDetails.get("home_team") + " vs " + gameDetails.get("away_team"),
-                        "Start Time: " + commenceTime.toString());
+            String commenceTimeString = (String) gameDetails.get("commence_time");
+            if (commenceTimeString == null) {
+                sendErrorEmbed(event, "Invalid Game Data",
+                        "The game data is missing the start time. Please try again later.");
+                return;
+            }
+
+            try {
+                Instant commenceTime = Instant.parse(commenceTimeString);
+                if (Instant.now().isAfter(commenceTime)) {
+                    sendErrorEmbed(event, "Game Already Started",
+                            "Betting is closed for this game as it has already started.",
+                            "Game: " + gameDetails.get("home_team") + " vs " + gameDetails.get("away_team"),
+                            "Start Time: " + commenceTime.toString());
+                    return;
+                }
+            } catch (DateTimeParseException e) {
+                sendErrorEmbed(event, "Invalid Game Data",
+                        "Unable to parse the game start time. Please try again later.");
                 return;
             }
 
             ResponseEntity<Integer> coinsResponse = apiClient.getUserCoins(userId, seasonId);
-            int userCoins = coinsResponse.getBody();
+            Integer userCoinsWrapper = coinsResponse.getBody();
+            if (userCoinsWrapper == null) {
+                sendErrorEmbed(event, "Balance Retrieval Failed",
+                        "Failed to retrieve user balance. Please try again.");
+                return;
+            }
+            int userCoins = userCoinsWrapper.intValue();
             if (userCoins < amount) {
                 throw new IllegalArgumentException("Not enough coins to place bet. You have " + userCoins + " coins.");
             }
 
             ResponseEntity<Integer> betResponse = apiClient.placeBet(userId, seasonId, gameId, betType, amount);
-            int betId = betResponse.getBody();
+            Integer betIdWrapper = betResponse.getBody();
+            if (betIdWrapper == null) {
+                sendErrorEmbed(event, "Bet Placement Failed",
+                        "Failed to place the bet. Please try again.");
+                return;
+            }
+            int betId = betIdWrapper.intValue();
 
-            String odds = betType.equals("HOME") ? gameDetails.get("home_odds").toString()
-                    : gameDetails.get("away_odds").toString();
+            String odds = betType.equals("HOME") ? String.valueOf(gameDetails.get("home_odds"))
+                    : String.valueOf(gameDetails.get("away_odds"));
 
             EmbedBuilder successEmbed = new EmbedBuilder()
                     .setColor(Color.GREEN)
@@ -360,10 +410,21 @@ public class CommandHandler extends ListenerAdapter {
             String username = event.getAuthor().getName();
 
             ResponseEntity<Integer> userResponse = apiClient.createUser(discordId, username);
-            int userId = userResponse.getBody();
+            Integer userIdWrapper = userResponse.getBody();
+            if (userIdWrapper == null) {
+                sendErrorEmbed(event, "User Creation Failed",
+                        "Failed to create or retrieve user. Please try again.");
+                return;
+            }
+            int userId = userIdWrapper.intValue();
 
-            ResponseEntity<List> betsResponse = apiClient.getUserBets(userId, seasonId);
-            List<Map<String, Object>> bets = betsResponse.getBody();
+            ResponseEntity<List<Bet>> betsResponse = apiClient.getUserBets(userId, seasonId);
+            List<Bet> bets = betsResponse.getBody();
+            if (bets == null) {
+                sendErrorEmbed(event, "Bets Retrieval Failed",
+                        "Failed to retrieve your bets. Please try again.");
+                return;
+            }
 
             if (bets.isEmpty()) {
                 EmbedBuilder noBetsEmbed = new EmbedBuilder()
@@ -383,14 +444,14 @@ public class CommandHandler extends ListenerAdapter {
                     .setFooter("Requested by " + username, event.getAuthor().getEffectiveAvatarUrl())
                     .setTimestamp(Instant.now());
 
-            for (Map<String, Object> bet : bets) {
+            for (Bet bet : bets) {
                 String betStatus = getBetStatus(bet);
                 String betInfo = String.format("%s vs %s\nBet: %s %d coins\nResult: %s",
-                        bet.get("home_team"), bet.get("away_team"),
-                        bet.get("bet_type"), bet.get("amount"),
+                        bet.getHomeTeam(), bet.getAwayTeam(),
+                        bet.getBetType(), bet.getAmount(),
                         betStatus);
 
-                betsEmbed.addField("Bet ID: " + bet.get("id"), betInfo, false);
+                betsEmbed.addField("Bet ID: " + bet.getId(), betInfo, false);
             }
 
             event.getChannel().sendMessageEmbeds(betsEmbed.build()).queue();
@@ -406,12 +467,12 @@ public class CommandHandler extends ListenerAdapter {
         }
     }
 
-    private String getBetStatus(Map<String, Object> bet) {
-        String result = (String) bet.get("result");
-        if (result == null || result.isEmpty()) {
+    private String getBetStatus(Bet bet) {
+        String status = bet.getStatus();
+        if (status == null || status.isEmpty()) {
             return "Pending";
         }
-        return result.equals("WIN") ? "Won" : "Lost";
+        return status.equals("WIN") ? "Won" : "Lost";
     }
 
     // User Information Commands
@@ -423,38 +484,65 @@ public class CommandHandler extends ListenerAdapter {
                     "Example: `!balance 123`");
             return;
         }
-
+    
         try {
             int seasonId = Integer.parseInt(args[1]);
             String discordId = event.getAuthor().getId();
             String username = event.getAuthor().getName();
-
+    
             ResponseEntity<Integer> userResponse = apiClient.createUser(discordId, username);
-            int userId = userResponse.getBody();
-
+            Integer userIdWrapper = userResponse.getBody();
+            if (userIdWrapper == null) {
+                sendErrorEmbed(event, "User Creation Failed",
+                        "Failed to create or retrieve user. Please try again.");
+                return;
+            }
+            int userId = userIdWrapper.intValue();
+    
             ResponseEntity<Integer> balanceResponse = apiClient.getUserCoins(userId, seasonId);
-            int balance = balanceResponse.getBody();
-
-            ResponseEntity<Map> seasonResponse = apiClient.getSeasonById(seasonId);
+            Integer balanceWrapper = balanceResponse.getBody();
+            if (balanceWrapper == null) {
+                sendErrorEmbed(event, "Balance Retrieval Failed",
+                        "Failed to retrieve your balance. Please try again.");
+                return;
+            }
+            int balance = balanceWrapper.intValue();
+    
+            ResponseEntity<Map<String, Object>> seasonResponse = apiClient.getSeasonById(seasonId);
             Map<String, Object> seasonInfo = seasonResponse.getBody();
-
+            if (seasonInfo == null) {
+                sendErrorEmbed(event, "Season Info Retrieval Failed",
+                        "Failed to retrieve season information. Please try again.");
+                return;
+            }
+    
+            Integer initialCoins = (Integer) seasonInfo.get("initial_coins");
+            Integer startWeek = (Integer) seasonInfo.get("start_week");
+            Integer endWeek = (Integer) seasonInfo.get("end_week");
+    
+            if (initialCoins == null || startWeek == null || endWeek == null) {
+                sendErrorEmbed(event, "Invalid Season Data",
+                        "The season data is incomplete. Please try again later.");
+                return;
+            }
+    
             Color goldColor = new Color(255, 215, 0);
-
+    
             EmbedBuilder balanceEmbed = new EmbedBuilder()
                     .setColor(goldColor)
                     .setTitle("Balance for Season " + seasonId)
                     .setDescription("Here's your current balance for this season:")
                     .addField("Current Balance", balance + " coins", false)
-                    .addField("Initial Balance", seasonInfo.get("initial_coins") + " coins", true)
-                    .addField("Net Change", (balance - (Integer) seasonInfo.get("initial_coins")) + " coins", true)
+                    .addField("Initial Balance", initialCoins + " coins", true)
+                    .addField("Net Change", (balance - initialCoins) + " coins", true)
                     .addField("Season Duration",
-                            "Week " + seasonInfo.get("start_week") + " to Week " + seasonInfo.get("end_week"), false)
+                            "Week " + startWeek + " to Week " + endWeek, false)
                     .setFooter("Requested by " + username, event.getAuthor().getEffectiveAvatarUrl())
                     .setTimestamp(Instant.now());
-
-            String funMessage = getFunBalanceMessage(balance, (Integer) seasonInfo.get("initial_coins"));
+    
+            String funMessage = getFunBalanceMessage(balance, initialCoins);
             balanceEmbed.addField("Status", funMessage, false);
-
+    
             event.getChannel().sendMessageEmbeds(balanceEmbed.build()).queue();
         } catch (NumberFormatException e) {
             sendErrorEmbed(event, "Invalid Season ID",
@@ -495,10 +583,10 @@ public class CommandHandler extends ListenerAdapter {
         try {
             int seasonId = Integer.parseInt(args[1]);
 
-            ResponseEntity<List> leaderboardResponse = apiClient.getUsersBySeason(seasonId);
-            List<Map<String, Object>> leaderboard = leaderboardResponse.getBody();
+            ResponseEntity<List<User>> leaderboardResponse = apiClient.getUsersBySeason(seasonId);
+            List<User> leaderboard = leaderboardResponse.getBody();
 
-            if (leaderboard.isEmpty()) {
+            if (leaderboard == null || leaderboard.isEmpty()) {
                 EmbedBuilder noUsersEmbed = new EmbedBuilder()
                         .setColor(Color.BLUE)
                         .setTitle("No Users Found")
@@ -510,7 +598,7 @@ public class CommandHandler extends ListenerAdapter {
             }
 
             // Sort leaderboard by coins (descending order)
-            leaderboard.sort((a, b) -> Integer.compare((Integer) b.get("coins"), (Integer) a.get("coins")));
+            leaderboard.sort((a, b) -> Integer.compare(b.getCoins(), a.getCoins()));
 
             EmbedBuilder leaderboardEmbed = new EmbedBuilder()
                     .setColor(new Color(218, 165, 32)) // Gold color
@@ -521,9 +609,9 @@ public class CommandHandler extends ListenerAdapter {
 
             // Add top 10 users to the leaderboard
             for (int i = 0; i < Math.min(10, leaderboard.size()); i++) {
-                Map<String, Object> user = leaderboard.get(i);
+                User user = leaderboard.get(i);
                 String medal = getMedalEmoji(i);
-                String userInfo = String.format("%s **%s**\nCoins: %d", medal, user.get("username"), user.get("coins"));
+                String userInfo = String.format("%s **%s**\nCoins: %d", medal, user.getUsername(), user.getCoins());
                 leaderboardEmbed.addField(String.format("%d.", i + 1), userInfo, false);
             }
 
@@ -531,9 +619,9 @@ public class CommandHandler extends ListenerAdapter {
             String requesterId = event.getAuthor().getId();
             int requesterPosition = findUserPosition(leaderboard, requesterId);
             if (requesterPosition > 10) {
-                Map<String, Object> requesterInfo = leaderboard.get(requesterPosition - 1);
-                String userInfo = String.format("**%s**\nCoins: %d", requesterInfo.get("username"),
-                        requesterInfo.get("coins"));
+                User requesterInfo = leaderboard.get(requesterPosition - 1);
+                String userInfo = String.format("**%s**\nCoins: %d", requesterInfo.getUsername(),
+                        requesterInfo.getCoins());
                 leaderboardEmbed.addField("Your Position: " + requesterPosition, userInfo, false);
             }
 
@@ -563,9 +651,9 @@ public class CommandHandler extends ListenerAdapter {
         }
     }
 
-    private int findUserPosition(List<Map<String, Object>> leaderboard, String discordId) {
+    private int findUserPosition(List<User> leaderboard, String discordId) {
         for (int i = 0; i < leaderboard.size(); i++) {
-            if (leaderboard.get(i).get("discord_id").equals(discordId)) {
+            if (leaderboard.get(i).getDiscordId().equals(discordId)) {
                 return i + 1;
             }
         }
@@ -585,10 +673,10 @@ public class CommandHandler extends ListenerAdapter {
         try {
             int seasonId = Integer.parseInt(args[1]);
 
-            ResponseEntity<Map> seasonResponse = apiClient.getSeasonById(seasonId);
+            ResponseEntity<Map<String, Object>> seasonResponse = apiClient.getSeasonById(seasonId);
             Map<String, Object> season = seasonResponse.getBody();
 
-            if (season == null || season.isEmpty()) {
+            if (season == null) {
                 EmbedBuilder noSeasonEmbed = new EmbedBuilder()
                         .setColor(Color.ORANGE)
                         .setTitle("Season Not Found")
@@ -665,9 +753,9 @@ public class CommandHandler extends ListenerAdapter {
 
     private void handleActiveSeasons(MessageReceivedEvent event) {
         try {
-            ResponseEntity<List> seasonsResponse = apiClient.getActiveSeasons();
-            List<Map<String, Object>> seasons = seasonsResponse.getBody();
-    
+            ResponseEntity<List<Season>> seasonsResponse = apiClient.getActiveSeasons();
+            List<Season> seasons = seasonsResponse.getBody();
+
             if (seasons == null || seasons.isEmpty()) {
                 EmbedBuilder noSeasonsEmbed = new EmbedBuilder()
                         .setColor(Color.BLUE)
@@ -679,32 +767,33 @@ public class CommandHandler extends ListenerAdapter {
                 event.getChannel().sendMessageEmbeds(noSeasonsEmbed.build()).queue();
                 return;
             }
-    
+
             EmbedBuilder activeSeasonsEmbed = new EmbedBuilder()
                     .setColor(new Color(50, 205, 50)) // Lime Green
                     .setTitle("Active Seasons")
                     .setDescription("Here are the currently active seasons with future games:")
                     .setFooter("Requested by " + event.getAuthor().getName(), event.getAuthor().getEffectiveAvatarUrl())
                     .setTimestamp(Instant.now());
-    
+
             Instant now = Instant.now();
-    
-            for (Map<String, Object> season : seasons) {
-                int seasonId = (Integer) season.get("id");
-                int startWeek = (Integer) season.get("start_week");
-                int endWeek = (Integer) season.get("end_week");
-                int initialCoins = (Integer) season.get("initial_coins");
-                Instant nextGameTime = Instant.parse((String) season.get("next_game_time"));
-    
+
+            for (Season season : seasons) {
+                int seasonId = season.getId();
+                int startWeek = season.getStartWeek();
+                int endWeek = season.getEndWeek();
+                int initialCoins = season.getInitialCoins();
+                Instant nextGameTime = season.getCreatedAt().toInstant(); // You might need to add a nextGameTime field
+                                                                          // to Season class
+
                 long daysUntilNextGame = ChronoUnit.DAYS.between(now, nextGameTime);
                 String timeUntilNextGame = formatTimeUntilNextGame(daysUntilNextGame);
-    
+
                 String seasonInfo = String.format("Weeks: %d-%d | Initial Coins: %d\nNext game: %s",
                         startWeek, endWeek, initialCoins, timeUntilNextGame);
-    
+
                 activeSeasonsEmbed.addField("Season " + seasonId, seasonInfo, false);
             }
-    
+
             event.getChannel().sendMessageEmbeds(activeSeasonsEmbed.build()).queue();
         } catch (Exception e) {
             sendErrorEmbed(event, "Failed to Retrieve Active Seasons",
@@ -715,7 +804,7 @@ public class CommandHandler extends ListenerAdapter {
 
     private void handleNflWeeks(MessageReceivedEvent event) {
         try {
-            ResponseEntity<List> weeksResponse = apiClient.getNflWeeks();
+            ResponseEntity<List<Integer>> weeksResponse = apiClient.getNflWeeks();
             List<Integer> weeks = weeksResponse.getBody();
 
             if (weeks == null || weeks.isEmpty()) {
@@ -788,8 +877,8 @@ public class CommandHandler extends ListenerAdapter {
         try {
             int week = Integer.parseInt(args[1]);
 
-            ResponseEntity<List> gamesResponse = apiClient.getNflGamesByWeek(week);
-            List<Map<String, Object>> games = gamesResponse.getBody();
+            ResponseEntity<List<Game>> gamesResponse = apiClient.getNflGamesByWeek(week);
+            List<Game> games = gamesResponse.getBody();
 
             if (games == null || games.isEmpty()) {
                 EmbedBuilder noGamesEmbed = new EmbedBuilder()
@@ -804,14 +893,24 @@ public class CommandHandler extends ListenerAdapter {
             }
 
             String messageId = UUID.randomUUID().toString();
-            activeGamesCache.put(messageId, games);
+            Map<String, Object> firstGame = games.stream().map(game -> {
+                Map<String, Object> gameMap = new HashMap<>();
+                gameMap.put("id", game.getId());
+                gameMap.put("week", game.getWeek());
+                gameMap.put("homeTeam", game.getHomeTeam());
+                gameMap.put("awayTeam", game.getAwayTeam());
+                gameMap.put("gameTime", game.getGameTime());
+                gameMap.put("homeOdds", game.getHomeOdds());
+                gameMap.put("awayOdds", game.getAwayOdds());
+                return gameMap;
+            }).collect(Collectors.toList()).get(0);
 
-            EmbedBuilder initialEmbed = createGameEmbed(games.get(0), week, 1, games.size());
+            EmbedBuilder initialEmbed = createGameEmbed(firstGame, week, 1, games.size());
             List<Button> buttons = createNavigationButtons(messageId, 0, games.size());
 
-            Map<String, Object> game = games.get(0);
-            String awayTeam = (String) game.get("away_team");
-            String homeTeam = (String) game.get("home_team");
+            Game game = games.get(0);
+            String awayTeam = game.getAwayTeam();
+            String homeTeam = game.getHomeTeam();
             File logoImage = createLogoImage(awayTeam, homeTeam);
 
             event.getChannel().sendMessageEmbeds(initialEmbed.build())
@@ -832,10 +931,10 @@ public class CommandHandler extends ListenerAdapter {
     }
 
     private EmbedBuilder createGameEmbed(Map<String, Object> game, int week, int currentGame, int totalGames) {
-        String awayTeam = (String) game.get("away_team");
-        String homeTeam = (String) game.get("home_team");
-        String awayOdds = game.get("away_odds").toString();
-        String homeOdds = game.get("home_odds").toString();
+        String awayTeam = (String) game.get("awayTeam");
+        String homeTeam = (String) game.get("homeTeam");
+        String awayOdds = String.valueOf(game.get("awayOdds"));
+        String homeOdds = String.valueOf(game.get("homeOdds"));
 
         EmbedBuilder gameEmbed = new EmbedBuilder()
                 .setColor(NFL_BLUE)
@@ -845,13 +944,13 @@ public class CommandHandler extends ListenerAdapter {
                         homeTeam + " Odds: " + homeOdds)
                 .setImage("attachment://placeholder.png");
 
-        Instant gameTime = Instant.parse((String) game.get("commence_time"));
+        Instant gameTime = ((Date) game.get("gameTime")).toInstant();
         String formattedDate = DateTimeFormatter.ofPattern("EEEE, MMMM d yyyy, HH:mm z")
                 .withZone(ZoneId.of("America/New_York"))
                 .format(gameTime);
 
         gameEmbed.addField("Date & Time", formattedDate, false);
-        gameEmbed.addField("Game ID", game.get("id").toString(), false);
+        gameEmbed.addField("Game ID", String.valueOf(game.get("id")), false);
 
         return gameEmbed;
     }
@@ -907,8 +1006,8 @@ public class CommandHandler extends ListenerAdapter {
         }
 
         Map<String, Object> game = games.get(newIndex);
-        String awayTeam = (String) game.get("away_team");
-        String homeTeam = (String) game.get("home_team");
+        String awayTeam = (String) game.get("awayTeam");
+        String homeTeam = (String) game.get("homeTeam");
 
         EmbedBuilder updatedEmbed = isTeamSchedule ? createTeamScheduleEmbed(game, teamName, newIndex + 1, games.size())
                 : createGameEmbed(game, week, newIndex + 1, games.size());
@@ -945,8 +1044,8 @@ public class CommandHandler extends ListenerAdapter {
         String teamName = String.join(" ", Arrays.copyOfRange(args, 1, args.length));
 
         try {
-            ResponseEntity<List> scheduleResponse = apiClient.getTeamSchedule(teamName);
-            List<Map<String, Object>> schedule = scheduleResponse.getBody();
+            ResponseEntity<List<Game>> scheduleResponse = apiClient.getTeamSchedule(teamName);
+            List<Game> schedule = scheduleResponse.getBody();
 
             if (schedule == null || schedule.isEmpty()) {
                 EmbedBuilder noScheduleEmbed = new EmbedBuilder()
@@ -961,14 +1060,24 @@ public class CommandHandler extends ListenerAdapter {
             }
 
             String messageId = UUID.randomUUID().toString();
-            activeGamesCache.put(messageId, schedule);
+            Map<String, Object> firstGame = schedule.stream().map(game -> {
+                Map<String, Object> gameMap = new HashMap<>();
+                gameMap.put("id", game.getId());
+                gameMap.put("week", game.getWeek());
+                gameMap.put("homeTeam", game.getHomeTeam());
+                gameMap.put("awayTeam", game.getAwayTeam());
+                gameMap.put("gameTime", game.getGameTime());
+                gameMap.put("homeOdds", game.getHomeOdds());
+                gameMap.put("awayOdds", game.getAwayOdds());
+                return gameMap;
+            }).collect(Collectors.toList()).get(0);
 
-            EmbedBuilder initialEmbed = createTeamScheduleEmbed(schedule.get(0), teamName, 1, schedule.size());
+            EmbedBuilder initialEmbed = createTeamScheduleEmbed(firstGame, teamName, 1, schedule.size());
             List<Button> buttons = createNavigationButtons(messageId, 0, schedule.size());
 
-            Map<String, Object> game = schedule.get(0);
-            String awayTeam = (String) game.get("away_team");
-            String homeTeam = (String) game.get("home_team");
+            Game game = schedule.get(0);
+            String awayTeam = game.getAwayTeam();
+            String homeTeam = game.getHomeTeam();
             File logoImage = createLogoImage(awayTeam, homeTeam);
 
             event.getChannel().sendMessageEmbeds(initialEmbed.build())
@@ -985,10 +1094,10 @@ public class CommandHandler extends ListenerAdapter {
 
     private EmbedBuilder createTeamScheduleEmbed(Map<String, Object> game, String teamName, int currentGame,
             int totalGames) {
-        String awayTeam = (String) game.get("away_team");
-        String homeTeam = (String) game.get("home_team");
-        String awayOdds = game.get("away_odds").toString();
-        String homeOdds = game.get("home_odds").toString();
+        String awayTeam = (String) game.get("awayTeam");
+        String homeTeam = (String) game.get("homeTeam");
+        String awayOdds = String.valueOf(game.get("awayOdds"));
+        String homeOdds = String.valueOf(game.get("homeOdds"));
 
         EmbedBuilder gameEmbed = new EmbedBuilder()
                 .setColor(NFL_BLUE)
@@ -997,14 +1106,14 @@ public class CommandHandler extends ListenerAdapter {
                         "Away Odds: " + awayOdds + "  |  Home Odds: " + homeOdds)
                 .setImage("attachment://placeholder.png");
 
-        Instant gameTime = Instant.parse((String) game.get("commence_time"));
+        Instant gameTime = ((Date) game.get("gameTime")).toInstant();
         String formattedDate = DateTimeFormatter.ofPattern("EEEE, MMMM d yyyy, HH:mm z")
                 .withZone(ZoneId.of("America/New_York"))
                 .format(gameTime);
 
         gameEmbed.addField("Date & Time", formattedDate, false);
-        gameEmbed.addField("Week", game.get("nfl_week").toString(), true);
-        gameEmbed.addField("Game ID", game.get("id").toString(), true);
+        gameEmbed.addField("Week", String.valueOf(game.get("week")), true);
+        gameEmbed.addField("Game ID", String.valueOf(game.get("id")), true);
 
         return gameEmbed;
     }

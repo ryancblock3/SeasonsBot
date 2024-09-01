@@ -6,7 +6,6 @@ import net.dv8tion.jda.api.entities.Activity;
 import net.dv8tion.jda.api.requests.GatewayIntent;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
-import org.springframework.beans.factory.annotation.Autowired;
 import javax.annotation.PostConstruct;
 
 @Component
@@ -17,7 +16,6 @@ public class SeasonsBot {
 
     private final CommandHandler commandHandler;
 
-    @Autowired
     public SeasonsBot(CommandHandler commandHandler) {
         this.commandHandler = commandHandler;
     }
