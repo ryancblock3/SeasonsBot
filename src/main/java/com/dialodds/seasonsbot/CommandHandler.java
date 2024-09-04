@@ -39,16 +39,13 @@ import java.util.concurrent.*;
 @Component
 public class CommandHandler extends ListenerAdapter {
 
-    // Constants
     private static final Color NFL_BLUE = new Color(0, 53, 148);
     private static final Color DISCORD_BLURPLE = new Color(114, 137, 218);
     private static final int MAX_MESSAGES_TO_DELETE = 100;
 
-    // Dependencies
     @Autowired
     private final ApiClient apiClient;
 
-    // Caches and Executors
     private final ConcurrentMap<String, Boolean> processedMessages;
     private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
     private final Map<String, List<Game>> activeGamesCache = new HashMap<>();
@@ -64,7 +61,6 @@ public class CommandHandler extends ListenerAdapter {
         this.processedMessages = processedMessages;
     }
 
-    // Main message handler
     @Override
     public void onMessageReceived(MessageReceivedEvent event) {
         if (event.getAuthor().isBot() || !event.getMessage().getContentRaw().startsWith("!")) {
@@ -73,7 +69,7 @@ public class CommandHandler extends ListenerAdapter {
 
         String messageId = event.getMessageId();
         if (processedMessages.putIfAbsent(messageId, Boolean.TRUE) != null) {
-            return; // This message has already been processed
+            return;
         }
 
         scheduler.schedule(() -> processedMessages.remove(messageId), 5, TimeUnit.SECONDS);
@@ -131,7 +127,6 @@ public class CommandHandler extends ListenerAdapter {
         }
     }
 
-    // Helper method to send error embeds
     private void sendErrorEmbed(MessageReceivedEvent event, String title, String... descriptions) {
         EmbedBuilder errorEmbed = new EmbedBuilder()
                 .setColor(Color.RED)
@@ -142,7 +137,6 @@ public class CommandHandler extends ListenerAdapter {
         event.getChannel().sendMessageEmbeds(errorEmbed.build()).queue();
     }
 
-    // Season Management Commands
 
     private void handleCreateSeason(MessageReceivedEvent event, String[] args) {
         if (args.length != 4) {
@@ -165,8 +159,6 @@ public class CommandHandler extends ListenerAdapter {
                         "The server returned an empty response. Please try again.");
                 return;
             }
-
-            // Continue with the rest of your code using seasonId
 
             EmbedBuilder successEmbed = new EmbedBuilder()
                     .setColor(Color.GREEN)
@@ -281,7 +273,6 @@ public class CommandHandler extends ListenerAdapter {
         }
     }
 
-    // Betting Commands
 
     private void handlePlaceBet(MessageReceivedEvent event, String[] args) {
         if (args.length != 5) {
@@ -480,7 +471,6 @@ public class CommandHandler extends ListenerAdapter {
         return status.equals("WIN") ? "Won" : "Lost";
     }
 
-    // User Information Commands
 
     private void handleBalance(MessageReceivedEvent event, String[] args) {
         if (args.length != 2) {
@@ -575,7 +565,6 @@ public class CommandHandler extends ListenerAdapter {
         }
     }
 
-    // Leaderboard Command
 
     private void handleLeaderboard(MessageReceivedEvent event, String[] args) {
     if (args.length != 2) {
@@ -602,17 +591,15 @@ public class CommandHandler extends ListenerAdapter {
             return;
         }
 
-        // Sort leaderboard by coins (descending order)
         leaderboard.sort(Comparator.comparing(User::getCoins).reversed());
 
         EmbedBuilder leaderboardEmbed = new EmbedBuilder()
-                .setColor(new Color(218, 165, 32)) // Gold color
+                .setColor(new Color(218, 165, 32))
                 .setTitle("Leaderboard for Season " + seasonId)
                 .setDescription("Here are the top performers for this season:")
                 .setFooter("Requested by " + event.getAuthor().getName(), event.getAuthor().getEffectiveAvatarUrl())
                 .setTimestamp(Instant.now());
 
-        // Add top 10 users to the leaderboard
         for (int i = 0; i < Math.min(10, leaderboard.size()); i++) {
             User user = leaderboard.get(i);
             String medal = getMedalEmoji(i);
@@ -620,7 +607,6 @@ public class CommandHandler extends ListenerAdapter {
             leaderboardEmbed.addField(String.format("%d.", i + 1), userInfo, false);
         }
 
-        // Add user's position if not in top 10
         String requesterId = event.getAuthor().getId();
         int requesterPosition = findUserPosition(leaderboard, requesterId);
         if (requesterPosition > 10) {
@@ -662,10 +648,9 @@ public class CommandHandler extends ListenerAdapter {
                 return i + 1;
             }
         }
-        return leaderboard.size() + 1; // If user not found, return a position after the last
+        return leaderboard.size() + 1;
     }
 
-    // Season Info Command
 
     private void handleSeasonInfo(MessageReceivedEvent event, String[] args) {
         if (args.length != 2) {
@@ -705,7 +690,7 @@ public class CommandHandler extends ListenerAdapter {
             String seasonStatus = getSeasonStatus(startWeek, endWeek, currentWeek);
 
             EmbedBuilder seasonInfoEmbed = new EmbedBuilder()
-                    .setColor(new Color(0, 128, 128)) // Teal color
+                    .setColor(new Color(0, 128, 128))
                     .setTitle("Season Information")
                     .setDescription("Details for Season ID: " + seasonId)
                     .addField("Start Week", String.valueOf(startWeek), true)
@@ -754,7 +739,6 @@ public class CommandHandler extends ListenerAdapter {
         return progressBar.toString();
     }
 
-    // NFL-related Commands
 
     private void handleActiveSeasons(MessageReceivedEvent event) {
         try {
@@ -774,7 +758,7 @@ public class CommandHandler extends ListenerAdapter {
             }
 
             EmbedBuilder activeSeasonsEmbed = new EmbedBuilder()
-                    .setColor(new Color(50, 205, 50)) // Lime Green
+                    .setColor(new Color(50, 205, 50))
                     .setTitle("Active Seasons")
                     .setDescription("Here are the currently active seasons with future games:")
                     .setFooter("Requested by " + event.getAuthor().getName(), event.getAuthor().getEffectiveAvatarUrl())
@@ -806,7 +790,7 @@ public class CommandHandler extends ListenerAdapter {
             sendErrorEmbed(event, "Failed to Retrieve Active Seasons",
                     "An error occurred while retrieving active seasons. Please try again.",
                     "Error Details: " + e.getMessage());
-            e.printStackTrace(); // Add this line for more detailed error logging
+            e.printStackTrace();
         }
     }
 
@@ -1007,13 +991,10 @@ public class CommandHandler extends ListenerAdapter {
         int week = 0;
 
         if (title.contains("Schedule")) {
-            // This is a team schedule
             String[] titleParts = title.split(" - ");
             String[] gameParts = titleParts[1].split(" ");
             currentIndex = Integer.parseInt(gameParts[1]) - 1;
-            // We don't need to parse the week for team schedules
         } else {
-            // This is a weekly game list
             String[] titleParts = title.split(" - ");
             week = Integer.parseInt(titleParts[0].split(" ")[1]);
             currentIndex = Integer.parseInt(titleParts[1].split(" ")[1]) - 1;
@@ -1138,7 +1119,7 @@ public class CommandHandler extends ListenerAdapter {
             return 0;
         }
         LocalDate gameDate = gameTime.atZone(ZoneId.of("America/New_York")).toLocalDate();
-        LocalDate seasonStartDate = LocalDate.of(2024, Month.SEPTEMBER, 5); // Adjust this for the correct season start
+        LocalDate seasonStartDate = LocalDate.of(2024, Month.SEPTEMBER, 5);
         long weeksSinceStart = ChronoUnit.WEEKS.between(seasonStartDate, gameDate);
         return (int) weeksSinceStart + 1;
     }
@@ -1269,14 +1250,13 @@ public class CommandHandler extends ListenerAdapter {
         }
     }
 
-    // Utility methods
 
     private int getCurrentNflWeek() {
-        LocalDate seasonStartDate = LocalDate.of(2024, Month.SEPTEMBER, 5); // Example for 2024 season
+        LocalDate seasonStartDate = LocalDate.of(2024, Month.SEPTEMBER, 5);
         LocalDate currentDate = LocalDate.now();
 
         if (currentDate.isBefore(seasonStartDate)) {
-            return 0; // 0 indicates pre-season
+            return 0;
         }
 
         long weeksSinceStart = ChronoUnit.WEEKS.between(seasonStartDate, currentDate);

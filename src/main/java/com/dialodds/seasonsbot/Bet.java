@@ -31,7 +31,6 @@ public class Bet {
     @JsonProperty("away_team")
     private String awayTeam;
 
-    // Constructors
     public Bet() {}
 
     public Bet(int id, int userId, int seasonId, int gameId, String betType, int amount, Date createdAt, String status, String homeTeam, String awayTeam) {
@@ -47,7 +46,6 @@ public class Bet {
         this.awayTeam = awayTeam;
     }
 
-    // Getters and setters
     public int getId() {
         return id;
     }

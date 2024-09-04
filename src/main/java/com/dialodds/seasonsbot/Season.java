@@ -22,7 +22,6 @@ public class Season {
     @JsonProperty("is_active")
     private boolean isActive;
 
-    // Constructors
     public Season() {}
 
     public Season(int id, int startWeek, int endWeek, int initialCoins, Date createdAt, boolean isActive) {
@@ -34,7 +33,6 @@ public class Season {
         this.isActive = isActive;
     }
 
-    // Getters and setters
     public int getId() {
         return id;
     }

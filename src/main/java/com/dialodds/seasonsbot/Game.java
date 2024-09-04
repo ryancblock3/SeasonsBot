@@ -22,7 +22,6 @@ public class Game {
     @JsonProperty("away_odds")
     private double awayOdds;
 
-    // Constructors
     public Game() {
     }
 
@@ -35,7 +34,6 @@ public class Game {
         this.awayOdds = awayOdds;
     }
 
-    // Getters and setters
     public int getId() {
         return id;
     }

@@ -24,12 +24,10 @@ public class ApiClient {
         this.apiBaseUrl = apiBaseUrl;
     }
 
-    // Helper method to construct URL
     private String buildUrl(String endpoint) {
         return apiBaseUrl + endpoint;
     }
 
-    // Generic method to handle GET requests
     private <T> ResponseEntity<T> makeGetRequest(String url, ParameterizedTypeReference<T> responseType, Object... uriVariables) {
         logger.info("Making GET request to: " + url);
         ResponseEntity<T> response = restTemplate.exchange(url, HttpMethod.GET, null, responseType, uriVariables);
@@ -37,7 +35,6 @@ public class ApiClient {
         return response;
     }
 
-    // Generic method to handle POST requests
     private <T> ResponseEntity<T> makePostRequest(String url, Object body, Class<T> responseType, Object... uriVariables) {
         logger.info("Making POST request to: " + url);
         return restTemplate.postForEntity(url, body, responseType, uriVariables);

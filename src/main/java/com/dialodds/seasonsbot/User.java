@@ -6,7 +6,6 @@ public class User {
     private String username;
     private int coins;
 
-    // Constructors
     public User() {}
 
     public User(int id, String discordId, String username, int coins) {
@@ -16,7 +15,6 @@ public class User {
         this.coins = coins;
     }
 
-    // Getters and setters
     public int getId() {
         return id;
     }

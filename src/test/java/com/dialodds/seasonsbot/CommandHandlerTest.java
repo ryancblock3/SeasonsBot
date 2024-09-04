@@ -219,8 +219,6 @@ class CommandHandlerTest {
         verify(channel).sendMessageEmbeds(any(MessageEmbed.class));
     }
 
-    // Helper methods to create mock data
-
     private Map<String, Object> createMockGameMap() {
         Map<String, Object> game = new HashMap<>();
         game.put("id", 1985);
