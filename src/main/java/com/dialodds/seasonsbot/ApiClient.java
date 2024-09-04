@@ -32,7 +32,9 @@ public class ApiClient {
     // Generic method to handle GET requests
     private <T> ResponseEntity<T> makeGetRequest(String url, ParameterizedTypeReference<T> responseType, Object... uriVariables) {
         logger.info("Making GET request to: " + url);
-        return restTemplate.exchange(url, HttpMethod.GET, null, responseType, uriVariables);
+        ResponseEntity<T> response = restTemplate.exchange(url, HttpMethod.GET, null, responseType, uriVariables);
+        logger.info("Response body: " + response.getBody());
+        return response;
     }
 
     // Generic method to handle POST requests
@@ -98,7 +100,10 @@ public class ApiClient {
 
     public ResponseEntity<List<Game>> getNflGamesByWeek(int week) {
         String url = buildUrl("/api/nfl/games/{week}");
-        return makeGetRequest(url, new ParameterizedTypeReference<List<Game>>() {}, week);
+        ResponseEntity<List<Game>> response = makeGetRequest(url, new ParameterizedTypeReference<List<Game>>() {}, week);
+        List<Game> games = response.getBody();
+        System.out.println("Parsed games: " + games);
+        return response;
     }
 
     public ResponseEntity<List<Game>> getTeamSchedule(String team) {

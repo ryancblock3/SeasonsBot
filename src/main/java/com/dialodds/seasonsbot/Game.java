@@ -1,31 +1,36 @@
 package com.dialodds.seasonsbot;
 
-import java.util.Date;
+import java.time.Instant;
+
+import com.fasterxml.jackson.annotation.JsonProperty;
 
 public class Game {
     private int id;
-    private int week;
+
+    @JsonProperty("home_team")
     private String homeTeam;
+
+    @JsonProperty("away_team")
     private String awayTeam;
-    private Date gameTime;
-    private int homeScore;
-    private int awayScore;
-    private String status;
+
+    @JsonProperty("commence_time")
+    private Instant commenceTime;
+
+    @JsonProperty("home_odds")
     private double homeOdds;
+
+    @JsonProperty("away_odds")
     private double awayOdds;
 
     // Constructors
-    public Game() {}
+    public Game() {
+    }
 
-    public Game(int id, int week, String homeTeam, String awayTeam, Date gameTime, int homeScore, int awayScore, String status, double homeOdds, double awayOdds) {
+    public Game(int id, String homeTeam, String awayTeam, Instant commenceTime, double homeOdds, double awayOdds) {
         this.id = id;
-        this.week = week;
         this.homeTeam = homeTeam;
         this.awayTeam = awayTeam;
-        this.gameTime = gameTime;
-        this.homeScore = homeScore;
-        this.awayScore = awayScore;
-        this.status = status;
+        this.commenceTime = commenceTime;
         this.homeOdds = homeOdds;
         this.awayOdds = awayOdds;
     }
@@ -37,14 +42,6 @@ public class Game {
 
     public void setId(int id) {
         this.id = id;
-    }
-
-    public int getWeek() {
-        return week;
-    }
-
-    public void setWeek(int week) {
-        this.week = week;
     }
 
     public String getHomeTeam() {
@@ -63,36 +60,20 @@ public class Game {
         this.awayTeam = awayTeam;
     }
 
-    public Date getGameTime() {
-        return gameTime;
+    public Instant getCommenceTime() {
+        return commenceTime;
     }
 
-    public void setGameTime(Date gameTime) {
-        this.gameTime = gameTime;
+    public void setCommenceTime(Instant commenceTime) {
+        this.commenceTime = commenceTime;
     }
 
-    public int getHomeScore() {
-        return homeScore;
+    public double getHomeOdds() {
+        return homeOdds;
     }
 
-    public void setHomeScore(int homeScore) {
-        this.homeScore = homeScore;
-    }
-
-    public int getAwayScore() {
-        return awayScore;
-    }
-
-    public void setAwayScore(int awayScore) {
-        this.awayScore = awayScore;
-    }
-
-    public String getStatus() {
-        return status;
-    }
-
-    public void setStatus(String status) {
-        this.status = status;
+    public void setHomeOdds(double homeOdds) {
+        this.homeOdds = homeOdds;
     }
 
     public double getAwayOdds() {
@@ -103,11 +84,15 @@ public class Game {
         this.awayOdds = awayOdds;
     }
 
-    public double getHomeOdds() {
-        return homeOdds;
-    }
-
-    public void setHomeOdds(double homeOdds) {
-        this.homeOdds = homeOdds;
+    @Override
+    public String toString() {
+        return "Game{" +
+                "id=" + id +
+                ", homeTeam='" + homeTeam + '\'' +
+                ", awayTeam='" + awayTeam + '\'' +
+                ", commenceTime=" + commenceTime +
+                ", homeOdds=" + homeOdds +
+                ", awayOdds=" + awayOdds +
+                '}';
     }
 }

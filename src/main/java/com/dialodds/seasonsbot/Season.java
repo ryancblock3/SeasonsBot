@@ -1,13 +1,25 @@
 package com.dialodds.seasonsbot;
 
 import java.util.Date;
+import java.time.Instant;
+import com.fasterxml.jackson.annotation.JsonProperty;
 
 public class Season {
     private int id;
+
+    @JsonProperty("start_week")
     private int startWeek;
+
+    @JsonProperty("end_week")
     private int endWeek;
+
+    @JsonProperty("initial_coins")
     private int initialCoins;
+
+    @JsonProperty("created_at")
     private Date createdAt;
+
+    @JsonProperty("is_active")
     private boolean isActive;
 
     // Constructors
@@ -57,6 +69,10 @@ public class Season {
 
     public Date getCreatedAt() {
         return createdAt;
+    }
+
+    public Instant getCreatedAtInstant() {
+        return createdAt != null ? createdAt.toInstant() : null;
     }
 
     public void setCreatedAt(Date createdAt) {

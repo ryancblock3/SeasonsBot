@@ -1,17 +1,34 @@
 package com.dialodds.seasonsbot;
 
 import java.util.Date;
+import com.fasterxml.jackson.annotation.JsonProperty;
 
 public class Bet {
     private int id;
+
+    @JsonProperty("user_id")
     private int userId;
+
+    @JsonProperty("season_id")
     private int seasonId;
+
+    @JsonProperty("game_id")
     private int gameId;
+
+    @JsonProperty("bet_type")
     private String betType;
+
     private int amount;
+
+    @JsonProperty("created_at")
     private Date createdAt;
+
     private String status;
+
+    @JsonProperty("home_team")
     private String homeTeam;
+
+    @JsonProperty("away_team")
     private String awayTeam;
 
     // Constructors

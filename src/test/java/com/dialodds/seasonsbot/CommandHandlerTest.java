@@ -84,7 +84,7 @@ class CommandHandlerTest {
         when(user.getId()).thenReturn("123456");
         when(user.getName()).thenReturn("TestUser");
         when(apiClient.createUser("123456", "TestUser")).thenReturn(ResponseEntity.ok(1));
-        when(apiClient.getGameById(1985)).thenReturn(ResponseEntity.ok(createMockGame()));
+        when(apiClient.getGameById(1985)).thenReturn(ResponseEntity.ok(createMockGameMap()));
         when(apiClient.getUserCoins(1, 1)).thenReturn(ResponseEntity.ok(1000));
         when(apiClient.placeBet(1, 1, 1985, "HOME", 125)).thenReturn(ResponseEntity.ok(1));
 
@@ -221,20 +221,20 @@ class CommandHandlerTest {
 
     // Helper methods to create mock data
 
-    private Map<String, Object> createMockGame() {
+    private Map<String, Object> createMockGameMap() {
         Map<String, Object> game = new HashMap<>();
         game.put("id", 1985);
         game.put("home_team", "Dallas Cowboys");
         game.put("away_team", "New York Giants");
+        game.put("commence_time", "2024-09-10T20:00:00Z");
         game.put("home_odds", 1.8);
         game.put("away_odds", 2.1);
-        game.put("commence_time", "2024-09-10T20:00:00Z");
         return game;
     }
 
     private List<Bet> createMockBetsList() {
         List<Bet> bets = new ArrayList<>();
-        bets.add(new Bet(1, 1, 1, 1985, "HOME", 125, new Date(), "WIN", "Dallas Cowboys", "New York Giants"));
+        bets.add(new Bet(1, 1, 1, 1985, "HOME", 125, Date.from(Instant.now()), "WIN", "Dallas Cowboys", "New York Giants"));
         return bets;
     }
 
@@ -263,7 +263,7 @@ class CommandHandlerTest {
 
     private List<Game> createMockGamesList() {
         List<Game> games = new ArrayList<>();
-        games.add(new Game(1985, 1, "Dallas Cowboys", "New York Giants", new Date(), 0, 0, "SCHEDULED", 1.8, 2.1));
+        games.add(new Game(1985, "Dallas Cowboys", "New York Giants", Instant.parse("2024-09-10T20:00:00Z"), 1.8, 2.1));
         return games;
     }
 }
