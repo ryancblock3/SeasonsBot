@@ -1,3 +1,275 @@
+# CodeCopier Output
+
+## File: src/main/java/com/dialodds/seasonsbot/ApiClient.java
+
+```java
+package com.dialodds.seasonsbot;
+
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.ParameterizedTypeReference;
+import org.springframework.stereotype.Component;
+import org.springframework.web.client.HttpStatusCodeException;
+import org.springframework.web.client.RestTemplate;
+import org.springframework.http.HttpMethod;
+import org.springframework.http.ResponseEntity;
+
+import java.util.Map;
+import java.util.List;
+import java.util.logging.Logger;
+
+@Component
+public class ApiClient {
+
+    private static final Logger logger = Logger.getLogger(ApiClient.class.getName());
+    private final RestTemplate restTemplate;
+    private final String apiBaseUrl;
+
+    public ApiClient(RestTemplate restTemplate, @Value("${api.base.url}") String apiBaseUrl) {
+        this.restTemplate = restTemplate;
+        this.apiBaseUrl = apiBaseUrl;
+    }
+
+    private String buildUrl(String endpoint) {
+        return apiBaseUrl + endpoint;
+    }
+
+    private <T> ResponseEntity<T> makeGetRequest(String url, ParameterizedTypeReference<T> responseType, Object... uriVariables) {
+        logger.info("Making GET request to: " + url);
+        ResponseEntity<T> response = restTemplate.exchange(url, HttpMethod.GET, null, responseType, uriVariables);
+        logger.info("Response body: " + response.getBody());
+        return response;
+    }
+
+    private <T> ResponseEntity<T> makePostRequest(String url, Object body, Class<T> responseType, Object... uriVariables) {
+        logger.info("Making POST request to: " + url);
+        return restTemplate.postForEntity(url, body, responseType, uriVariables);
+    }
+
+    public ResponseEntity<Integer> createSeason(int startWeek, int endWeek, int initialCoins) {
+        String url = buildUrl("/api/seasons?startWeek={startWeek}&endWeek={endWeek}&initialCoins={initialCoins}");
+        return makePostRequest(url, null, Integer.class, startWeek, endWeek, initialCoins);
+    }
+
+    public ResponseEntity<List<Season>> getActiveSeasons() {
+        String url = buildUrl("/api/seasons/active");
+        return makeGetRequest(url, new ParameterizedTypeReference<List<Season>>() {});
+    }
+
+    public ResponseEntity<Map<String, Object>> getSeasonById(int seasonId) {
+        String url = buildUrl("/api/seasons/{seasonId}");
+        return makeGetRequest(url, new ParameterizedTypeReference<Map<String, Object>>() {}, seasonId);
+    }
+
+    public ResponseEntity<Integer> createUser(String discordId, String username) {
+        String url = buildUrl("/api/users?discordId={discordId}&username={username}");
+        return makePostRequest(url, null, Integer.class, discordId, username);
+    }
+
+    public ResponseEntity<Void> addUserToSeason(int userId, int seasonId) {
+        String url = buildUrl("/api/users/{userId}/seasons/{seasonId}");
+        return makePostRequest(url, null, Void.class, userId, seasonId);
+    }
+
+    public ResponseEntity<Void> createUserAndJoinSeason(String discordId, String username, int seasonId) {
+        String url = buildUrl("/api/users/join-season?discordId={discordId}&username={username}&seasonId={seasonId}");
+        return makePostRequest(url, null, Void.class, discordId, username, seasonId);
+    }
+
+    public ResponseEntity<List<User>> getUsersBySeason(int seasonId) {
+        String url = buildUrl("/api/users/seasons/{seasonId}");
+        return makeGetRequest(url, new ParameterizedTypeReference<List<User>>() {}, seasonId);
+    }
+
+    public ResponseEntity<Integer> getUserCoins(int userId, int seasonId) {
+        String url = buildUrl("/api/users/{userId}/seasons/{seasonId}/coins");
+        return makeGetRequest(url, new ParameterizedTypeReference<Integer>() {}, userId, seasonId);
+    }
+
+    public ResponseEntity<Integer> placeBet(int userId, int seasonId, int gameId, String betType, int amount) {
+        String url = buildUrl("/api/bets?userId={userId}&seasonId={seasonId}&gameId={gameId}&betType={betType}&amount={amount}");
+        return makePostRequest(url, null, Integer.class, userId, seasonId, gameId, betType, amount);
+    }
+
+    public ResponseEntity<List<Bet>> getUserBets(int userId, int seasonId) {
+        String url = buildUrl("/api/bets/users/{userId}/seasons/{seasonId}");
+        return makeGetRequest(url, new ParameterizedTypeReference<List<Bet>>() {}, userId, seasonId);
+    }
+
+    public ResponseEntity<List<Integer>> getNflWeeks() {
+        String url = buildUrl("/api/nfl/weeks");
+        return makeGetRequest(url, new ParameterizedTypeReference<List<Integer>>() {});
+    }
+
+    public ResponseEntity<List<Game>> getNflGamesByWeek(int week) {
+        String url = buildUrl("/api/nfl/games/{week}");
+        ResponseEntity<List<Game>> response = makeGetRequest(url, new ParameterizedTypeReference<List<Game>>() {}, week);
+        List<Game> games = response.getBody();
+        System.out.println("Parsed games: " + games);
+        return response;
+    }
+
+    public ResponseEntity<List<Game>> getTeamSchedule(String team) {
+        String url = buildUrl("/api/nfl/schedule/{team}");
+        return makeGetRequest(url, new ParameterizedTypeReference<List<Game>>() {}, team);
+    }
+
+    public ResponseEntity<Map<String, Object>> getGameDetails(int gameId) {
+        String url = buildUrl("/api/nfl/games/{gameId}");
+        return makeGetRequest(url, new ParameterizedTypeReference<Map<String, Object>>() {}, gameId);
+    }
+
+    public ResponseEntity<Map<String, Object>> getGameById(int gameId) {
+        String url = buildUrl("/api/nfl/games/id/{gameId}");
+        return makeGetRequest(url, new ParameterizedTypeReference<Map<String, Object>>() {}, gameId);
+    }
+
+    public ResponseEntity<Map<String, Object>> deleteSeason(int seasonId) {
+        String url = buildUrl("/api/seasons/" + seasonId);
+        try {
+            return restTemplate.exchange(url, HttpMethod.DELETE, null, new ParameterizedTypeReference<Map<String, Object>>() {});
+        } catch (HttpStatusCodeException e) {
+            logger.warning("Error deleting season: " + e.getMessage());
+            return ResponseEntity.status(e.getStatusCode()).body(Map.of(
+                "deleted", false,
+                "message", "Error: " + e.getStatusCode() + " - " + e.getResponseBodyAsString()
+            ));
+        }
+    }
+}
+```
+
+## File: src/main/java/com/dialodds/seasonsbot/Bet.java
+
+```java
+package com.dialodds.seasonsbot;
+
+import java.util.Date;
+import com.fasterxml.jackson.annotation.JsonProperty;
+
+public class Bet {
+    private int id;
+
+    @JsonProperty("user_id")
+    private int userId;
+
+    @JsonProperty("season_id")
+    private int seasonId;
+
+    @JsonProperty("game_id")
+    private int gameId;
+
+    @JsonProperty("bet_type")
+    private String betType;
+
+    private int amount;
+
+    @JsonProperty("created_at")
+    private Date createdAt;
+
+    private String status;
+
+    @JsonProperty("home_team")
+    private String homeTeam;
+
+    @JsonProperty("away_team")
+    private String awayTeam;
+
+    public Bet() {}
+
+    public Bet(int id, int userId, int seasonId, int gameId, String betType, int amount, Date createdAt, String status, String homeTeam, String awayTeam) {
+        this.id = id;
+        this.userId = userId;
+        this.seasonId = seasonId;
+        this.gameId = gameId;
+        this.betType = betType;
+        this.amount = amount;
+        this.createdAt = createdAt;
+        this.status = status;
+        this.homeTeam = homeTeam;
+        this.awayTeam = awayTeam;
+    }
+
+    public int getId() {
+        return id;
+    }
+
+    public void setId(int id) {
+        this.id = id;
+    }
+
+    public int getUserId() {
+        return userId;
+    }
+
+    public void setUserId(int userId) {
+        this.userId = userId;
+    }
+
+    public int getSeasonId() {
+        return seasonId;
+    }
+
+    public void setSeasonId(int seasonId) {
+        this.seasonId = seasonId;
+    }
+
+    public int getGameId() {
+        return gameId;
+    }
+
+    public void setGameId(int gameId) {
+        this.gameId = gameId;
+    }
+
+    public String getBetType() {
+        return betType;
+    }
+
+    public void setBetType(String betType) {
+        this.betType = betType;
+    }
+
+    public int getAmount() {
+        return amount;
+    }
+
+    public void setAmount(int amount) {
+        this.amount = amount;
+    }
+
+    public Date getCreatedAt() {
+        return createdAt;
+    }
+
+    public void setCreatedAt(Date createdAt) {
+        this.createdAt = createdAt;
+    }
+
+    public String getStatus() {
+        return status;
+    }
+
+    public void setStatus(String status) {
+        this.status = status;
+    }
+
+    public String getHomeTeam() {
+        return homeTeam;
+    }
+
+    public void setHomeTeam(String homeTeam) {
+        this.homeTeam = homeTeam;
+    }
+
+    public String getAwayTeam() {
+        return awayTeam;
+    }
+}
+```
+
+## File: src/main/java/com/dialodds/seasonsbot/CommandHandler.java
+
+```java
 package com.dialodds.seasonsbot;
 
 import net.dv8tion.jda.api.EmbedBuilder;
@@ -24,7 +296,6 @@ import java.awt.Graphics;
 import java.awt.Font;
 import java.awt.image.BufferedImage;
 import java.io.File;
-import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -35,7 +306,7 @@ import java.time.format.DateTimeParseException;
 import java.time.temporal.ChronoUnit;
 import java.util.*;
 import java.util.concurrent.*;
-import java.util.stream.Collectors;
+
 
 @Component
 public class CommandHandler extends ListenerAdapter {
@@ -137,6 +408,7 @@ public class CommandHandler extends ListenerAdapter {
         }
         event.getChannel().sendMessageEmbeds(errorEmbed.build()).queue();
     }
+
 
     private void handleCreateSeason(MessageReceivedEvent event, String[] args) {
         if (args.length != 4) {
@@ -272,6 +544,7 @@ public class CommandHandler extends ListenerAdapter {
                     "Error Details: " + e.getMessage());
         }
     }
+
 
     private void handlePlaceBet(MessageReceivedEvent event, String[] args) {
         if (args.length != 5) {
@@ -470,6 +743,7 @@ public class CommandHandler extends ListenerAdapter {
         return status.equals("WIN") ? "Won" : "Lost";
     }
 
+
     private void handleBalance(MessageReceivedEvent event, String[] args) {
         if (args.length != 2) {
             sendErrorEmbed(event, "Invalid Command Usage",
@@ -563,68 +837,68 @@ public class CommandHandler extends ListenerAdapter {
         }
     }
 
+
     private void handleLeaderboard(MessageReceivedEvent event, String[] args) {
-        if (args.length != 2) {
-            sendErrorEmbed(event, "Invalid Command Usage",
-                    "Usage: `!leaderboard <season_id>`",
-                    "Example: `!leaderboard 123`");
+    if (args.length != 2) {
+        sendErrorEmbed(event, "Invalid Command Usage",
+                "Usage: `!leaderboard <season_id>`",
+                "Example: `!leaderboard 123`");
+        return;
+    }
+
+    try {
+        int seasonId = Integer.parseInt(args[1]);
+
+        ResponseEntity<List<User>> leaderboardResponse = apiClient.getUsersBySeason(seasonId);
+        List<User> leaderboard = leaderboardResponse.getBody();
+
+        if (leaderboard == null || leaderboard.isEmpty()) {
+            EmbedBuilder noUsersEmbed = new EmbedBuilder()
+                    .setColor(Color.BLUE)
+                    .setTitle("No Users Found")
+                    .setDescription("There are no users participating in this season yet.")
+                    .setFooter("Season ID: " + seasonId)
+                    .setTimestamp(Instant.now());
+            event.getChannel().sendMessageEmbeds(noUsersEmbed.build()).queue();
             return;
         }
 
-        try {
-            int seasonId = Integer.parseInt(args[1]);
+        leaderboard.sort(Comparator.comparing(User::getCoins).reversed());
 
-            ResponseEntity<List<User>> leaderboardResponse = apiClient.getUsersBySeason(seasonId);
-            List<User> leaderboard = leaderboardResponse.getBody();
+        EmbedBuilder leaderboardEmbed = new EmbedBuilder()
+                .setColor(new Color(218, 165, 32))
+                .setTitle("Leaderboard for Season " + seasonId)
+                .setDescription("Here are the top performers for this season:")
+                .setFooter("Requested by " + event.getAuthor().getName(), event.getAuthor().getEffectiveAvatarUrl())
+                .setTimestamp(Instant.now());
 
-            if (leaderboard == null || leaderboard.isEmpty()) {
-                EmbedBuilder noUsersEmbed = new EmbedBuilder()
-                        .setColor(Color.BLUE)
-                        .setTitle("No Users Found")
-                        .setDescription("There are no users participating in this season yet.")
-                        .setFooter("Season ID: " + seasonId)
-                        .setTimestamp(Instant.now());
-                event.getChannel().sendMessageEmbeds(noUsersEmbed.build()).queue();
-                return;
-            }
-
-            leaderboard.sort(Comparator.comparing(User::getCoins).reversed());
-
-            EmbedBuilder leaderboardEmbed = new EmbedBuilder()
-                    .setColor(new Color(218, 165, 32))
-                    .setTitle("Leaderboard for Season " + seasonId)
-                    .setDescription("Here are the top performers for this season:")
-                    .setFooter("Requested by " + event.getAuthor().getName(), event.getAuthor().getEffectiveAvatarUrl())
-                    .setTimestamp(Instant.now());
-
-            for (int i = 0; i < Math.min(10, leaderboard.size()); i++) {
-                User user = leaderboard.get(i);
-                String medal = getMedalEmoji(i);
-                String userInfo = String.format("%s **%s**\nCoins: %d", medal, user.getUsername(), user.getCoins());
-                leaderboardEmbed.addField(String.format("%d.", i + 1), userInfo, false);
-            }
-
-            String requesterId = event.getAuthor().getId();
-            int requesterPosition = findUserPosition(leaderboard, requesterId);
-            if (requesterPosition > 10) {
-                User requesterInfo = leaderboard.get(requesterPosition - 1);
-                String userInfo = String.format("**%s**\nCoins: %d", requesterInfo.getUsername(),
-                        requesterInfo.getCoins());
-                leaderboardEmbed.addField("Your Position: " + requesterPosition, userInfo, false);
-            }
-
-            event.getChannel().sendMessageEmbeds(leaderboardEmbed.build()).queue();
-        } catch (NumberFormatException e) {
-            sendErrorEmbed(event, "Invalid Season ID",
-                    "Please enter a valid number for the season ID.",
-                    "Correct Usage: `!leaderboard <season_id>`",
-                    "Example: `!leaderboard 123`");
-        } catch (Exception e) {
-            sendErrorEmbed(event, "Failed to Retrieve Leaderboard",
-                    "An error occurred while retrieving the leaderboard. Please try again.",
-                    "Error Details: " + e.getMessage());
+        for (int i = 0; i < Math.min(10, leaderboard.size()); i++) {
+            User user = leaderboard.get(i);
+            String medal = getMedalEmoji(i);
+            String userInfo = String.format("%s **%s**\nCoins: %d", medal, user.getUsername(), user.getCoins());
+            leaderboardEmbed.addField(String.format("%d.", i + 1), userInfo, false);
         }
+
+        String requesterId = event.getAuthor().getId();
+        int requesterPosition = findUserPosition(leaderboard, requesterId);
+        if (requesterPosition > 10) {
+            User requesterInfo = leaderboard.get(requesterPosition - 1);
+            String userInfo = String.format("**%s**\nCoins: %d", requesterInfo.getUsername(), requesterInfo.getCoins());
+            leaderboardEmbed.addField("Your Position: " + requesterPosition, userInfo, false);
+        }
+
+        event.getChannel().sendMessageEmbeds(leaderboardEmbed.build()).queue();
+    } catch (NumberFormatException e) {
+        sendErrorEmbed(event, "Invalid Season ID",
+                "Please enter a valid number for the season ID.",
+                "Correct Usage: `!leaderboard <season_id>`",
+                "Example: `!leaderboard 123`");
+    } catch (Exception e) {
+        sendErrorEmbed(event, "Failed to Retrieve Leaderboard",
+                "An error occurred while retrieving the leaderboard. Please try again.",
+                "Error Details: " + e.getMessage());
     }
+}
 
     private String getMedalEmoji(int position) {
         switch (position) {
@@ -648,6 +922,7 @@ public class CommandHandler extends ListenerAdapter {
         }
         return leaderboard.size() + 1;
     }
+
 
     private void handleSeasonInfo(MessageReceivedEvent event, String[] args) {
         if (args.length != 2) {
@@ -735,6 +1010,7 @@ public class CommandHandler extends ListenerAdapter {
         }
         return progressBar.toString();
     }
+
 
     private void handleActiveSeasons(MessageReceivedEvent event) {
         try {
@@ -866,9 +1142,9 @@ public class CommandHandler extends ListenerAdapter {
             int week = Integer.parseInt(args[1]);
 
             ResponseEntity<List<Game>> gamesResponse = apiClient.getNflGamesByWeek(week);
-            List<Game> allGames = gamesResponse.getBody();
+            List<Game> games = gamesResponse.getBody();
 
-            if (allGames == null || allGames.isEmpty()) {
+            if (games == null || games.isEmpty()) {
                 EmbedBuilder noGamesEmbed = new EmbedBuilder()
                         .setColor(Color.ORANGE)
                         .setTitle("No NFL Games Available")
@@ -880,26 +1156,30 @@ public class CommandHandler extends ListenerAdapter {
                 return;
             }
 
-            // Filter games for the requested week
-            List<Game> weekGames = allGames.stream()
-                    .filter(game -> getWeekNumber(game.getCommenceTime()) == week)
-                    .collect(Collectors.toList());
+            String messageId = UUID.randomUUID().toString();
+            List<Game> gamesList = new ArrayList<>(games);
 
-            if (weekGames.isEmpty()) {
-                sendErrorEmbed(event, "No Games Found",
-                        "No games found for Week " + week + ".",
-                        "Please try a different week number.");
+            if (gamesList.isEmpty()) {
+                sendErrorEmbed(event, "No Game Data",
+                        "No game data available for Week " + week + ".",
+                        "Please try again later or contact support if the issue persists.");
                 return;
             }
 
-            String messageId = UUID.randomUUID().toString();
-            Game firstGame = weekGames.get(0);
+            Game firstGame = gamesList.get(0);
 
-            EmbedBuilder initialEmbed = createGameEmbed(firstGame, week, 1, weekGames.size());
-            List<Button> buttons = createNavigationButtons(messageId, 0, weekGames.size());
+            EmbedBuilder initialEmbed = createGameEmbed(firstGame, week, 1, gamesList.size());
+            List<Button> buttons = createNavigationButtons(messageId, 0, gamesList.size());
 
             String awayTeam = firstGame.getAwayTeam();
             String homeTeam = firstGame.getHomeTeam();
+
+            if (awayTeam == null || homeTeam == null) {
+                sendErrorEmbed(event, "Invalid Game Data",
+                        "The game data is missing team information.",
+                        "Please try again later or contact support if the issue persists.");
+                return;
+            }
 
             try {
                 File logoImage = createLogoImage(awayTeam, homeTeam);
@@ -908,7 +1188,7 @@ public class CommandHandler extends ListenerAdapter {
                         .addFiles(FileUpload.fromData(logoImage, "game_logos.png"))
                         .queue(message -> {
                             logoImage.delete();
-                            activeGamesCache.put(messageId, weekGames);
+                            activeGamesCache.put(messageId, gamesList);
                         });
             } catch (IOException e) {
                 sendErrorEmbed(event, "Logo Generation Failed",
@@ -1112,52 +1392,31 @@ public class CommandHandler extends ListenerAdapter {
         }
         LocalDate gameDate = gameTime.atZone(ZoneId.of("America/New_York")).toLocalDate();
         LocalDate seasonStartDate = LocalDate.of(2024, Month.SEPTEMBER, 5);
-        if (gameDate.getYear() > seasonStartDate.getYear()) {
-            // Handle games in the following year (e.g., Week 18)
-            return (int) (ChronoUnit.WEEKS.between(seasonStartDate, gameDate.withYear(seasonStartDate.getYear())) + 1);
-        }
         long weeksSinceStart = ChronoUnit.WEEKS.between(seasonStartDate, gameDate);
         return (int) weeksSinceStart + 1;
     }
 
     private File createLogoImage(String awayTeam, String homeTeam) throws IOException {
-        String[] possiblePaths = {
-            System.getenv("LOGO_PATH"),
-            "/app/logos",
-            "src/main/resources/static/logos",
-            "logos"
-        };
-    
-        String logoPath = null;
-        for (String path : possiblePaths) {
-            if (path != null && new File(path).exists()) {
-                logoPath = path;
-                break;
-            }
-        }
-    
-        if (logoPath == null) {
-            throw new FileNotFoundException("Could not find logos directory");
-        }
-    
-        BufferedImage awayLogo = ImageIO.read(new File(logoPath, getTeamLogoFilename(awayTeam)));
-        BufferedImage homeLogo = ImageIO.read(new File(logoPath, getTeamLogoFilename(homeTeam)));
-    
+        BufferedImage awayLogo = ImageIO
+                .read(new File("src/main/resources/static/logos/" + getTeamLogoFilename(awayTeam)));
+        BufferedImage homeLogo = ImageIO
+                .read(new File("src/main/resources/static/logos/" + getTeamLogoFilename(homeTeam)));
+
         int width = awayLogo.getWidth() + homeLogo.getWidth() + 100;
         int height = Math.max(awayLogo.getHeight(), homeLogo.getHeight()) + 60;
-    
+
         BufferedImage combined = new BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB);
         Graphics g = combined.getGraphics();
-    
+
         g.setFont(new Font("Arial", Font.BOLD, 20));
         g.drawString(awayTeam, 10, 25);
         g.drawString(homeTeam, awayLogo.getWidth() + 110, 25);
-    
+
         g.drawImage(awayLogo, 0, 30, null);
         g.drawImage(homeLogo, awayLogo.getWidth() + 100, 30, null);
-    
+
         g.dispose();
-    
+
         File tempFile = File.createTempFile("game_logos", ".png");
         ImageIO.write(combined, "PNG", tempFile);
         return tempFile;
@@ -1169,57 +1428,56 @@ public class CommandHandler extends ListenerAdapter {
 
     private void handleHelp(MessageReceivedEvent event) {
         EmbedBuilder helpEmbed = new EmbedBuilder()
-                .setColor(DISCORD_BLURPLE)
-                .setTitle("NFL Betting Bot Help")
-                .setDescription("Welcome to the NFL Betting Bot! Here's a guide to all available commands:")
-                .setFooter("Requested by " + event.getAuthor().getName(), event.getAuthor().getEffectiveAvatarUrl())
-                .setTimestamp(Instant.now());
-
+            .setColor(DISCORD_BLURPLE)
+            .setTitle("NFL Betting Bot Help")
+            .setDescription("Welcome to the NFL Betting Bot! Here's a guide to all available commands:")
+            .setFooter("Requested by " + event.getAuthor().getName(), event.getAuthor().getEffectiveAvatarUrl())
+            .setTimestamp(Instant.now());
+    
         helpEmbed.addField("🏈 Season Management",
-                "`!create_season <start_week> <end_week> <initial_coins>` - Create a new season\n" +
-                        "`!join_season <season_id>` - Join an existing season\n" +
-                        "`!season_info <season_id>` - Get information about a season\n" +
-                        "`!active_seasons` - List all active seasons\n",
-                false);
-
+            "`!create_season <start_week> <end_week> <initial_coins>` - Create a new season\n" +
+            "`!join_season <season_id>` - Join an existing season\n" +
+            "`!season_info <season_id>` - Get information about a season\n" +
+            "`!active_seasons` - List all active seasons\n",
+            false);
+    
         helpEmbed.addField("💰 Betting",
-                "`!bet <season_id> <game_id> <bet_type> <amount>` - Place a bet\n" +
-                        "`!my_bets <season_id>` - View your bets for a season\n" +
-                        "`!balance <season_id>` - Check your balance for a season",
-                false);
-
+            "`!bet <season_id> <game_id> <bet_type> <amount>` - Place a bet\n" +
+            "`!my_bets <season_id>` - View your bets for a season\n" +
+            "`!balance <season_id>` - Check your balance for a season",
+            false);
+    
         helpEmbed.addField("🏆 Leaderboard",
-                "`!leaderboard <season_id>` - View the leaderboard for a season", false);
-
+            "`!leaderboard <season_id>` - View the leaderboard for a season", false);
+    
         helpEmbed.addField("📅 NFL Information",
-                "`!nfl_games <week>` - Get NFL games for a specific week\n" +
-                        "`!team_schedule <team_name>` - Get schedule for a specific team",
-                false);
-
+            "`!nfl_games <week>` - Get NFL games for a specific week\n" +
+            "`!team_schedule <team_name>` - Get schedule for a specific team",
+            false);
+    
         helpEmbed.addField("🧹 Utility",
-                "`!help` - Display this help message\n" +
-                        "`!purge <number>` - Delete a number of recent messages (admin only)",
-                false);
-
+            "`!help` - Display this help message\n" +
+            "`!purge <number>` - Delete a number of recent messages (admin only)",
+            false);
+    
         helpEmbed.addField("📘 Quick Start Guide",
-                "1. Join or create a season using `!join_season` or `!create_season`\n" +
-                        "2. Check available games with `!nfl_games`\n" +
-                        "3. Place a bet using the `!bet` command\n" +
-                        "4. Track your progress with `!my_bets` and `!balance`\n" +
-                        "5. Compare your standing using `!leaderboard`",
-                false);
-
+            "1. Join or create a season using `!join_season` or `!create_season`\n" +
+            "2. Check available games with `!nfl_games`\n" +
+            "3. Place a bet using the `!bet` command\n" +
+            "4. Track your progress with `!my_bets` and `!balance`\n" +
+            "5. Compare your standing using `!leaderboard`",
+            false);
+    
         helpEmbed.addField("🎲 Betting Example",
-                "To bet 100 coins on the home team for game 456 in season 123:\n" +
-                        "`!bet 123 456 HOME 100`",
-                false);
-
+            "To bet 100 coins on the home team for game 456 in season 123:\n" +
+            "`!bet 123 456 HOME 100`",
+            false);
+    
         helpEmbed.addField("❓ Need More Help?",
-                "If you need more information about a specific command, try using it with no arguments or incorrect arguments. "
-                        +
-                        "The bot will provide you with more detailed usage instructions.",
-                false);
-
+            "If you need more information about a specific command, try using it with no arguments or incorrect arguments. " +
+            "The bot will provide you with more detailed usage instructions.",
+            false);
+    
         event.getChannel().sendMessageEmbeds(helpEmbed.build()).queue();
     }
 
@@ -1271,6 +1529,7 @@ public class CommandHandler extends ListenerAdapter {
         }
     }
 
+
     private int getCurrentNflWeek() {
         LocalDate seasonStartDate = LocalDate.of(2024, Month.SEPTEMBER, 5);
         LocalDate currentDate = LocalDate.now();
@@ -1308,3 +1567,659 @@ public class CommandHandler extends ListenerAdapter {
         }
     }
 }
+```
+
+## File: src/main/java/com/dialodds/seasonsbot/Game.java
+
+```java
+package com.dialodds.seasonsbot;
+
+import java.time.Instant;
+
+import com.fasterxml.jackson.annotation.JsonProperty;
+
+public class Game {
+    private int id;
+
+    @JsonProperty("home_team")
+    private String homeTeam;
+
+    @JsonProperty("away_team")
+    private String awayTeam;
+
+    @JsonProperty("commence_time")
+    private Instant commenceTime;
+
+    @JsonProperty("home_odds")
+    private double homeOdds;
+
+    @JsonProperty("away_odds")
+    private double awayOdds;
+
+    public Game() {
+    }
+
+    public Game(int id, String homeTeam, String awayTeam, Instant commenceTime, double homeOdds, double awayOdds) {
+        this.id = id;
+        this.homeTeam = homeTeam;
+        this.awayTeam = awayTeam;
+        this.commenceTime = commenceTime;
+        this.homeOdds = homeOdds;
+        this.awayOdds = awayOdds;
+    }
+
+    public int getId() {
+        return id;
+    }
+
+    public void setId(int id) {
+        this.id = id;
+    }
+
+    public String getHomeTeam() {
+        return homeTeam;
+    }
+
+    public void setHomeTeam(String homeTeam) {
+        this.homeTeam = homeTeam;
+    }
+
+    public String getAwayTeam() {
+        return awayTeam;
+    }
+
+    public void setAwayTeam(String awayTeam) {
+        this.awayTeam = awayTeam;
+    }
+
+    public Instant getCommenceTime() {
+        return commenceTime;
+    }
+
+    public void setCommenceTime(Instant commenceTime) {
+        this.commenceTime = commenceTime;
+    }
+
+    public double getHomeOdds() {
+        return homeOdds;
+    }
+
+    public void setHomeOdds(double homeOdds) {
+        this.homeOdds = homeOdds;
+    }
+
+    public double getAwayOdds() {
+        return awayOdds;
+    }
+
+    public void setAwayOdds(double awayOdds) {
+        this.awayOdds = awayOdds;
+    }
+
+    @Override
+    public String toString() {
+        return "Game{" +
+                "id=" + id +
+                ", homeTeam='" + homeTeam + '\'' +
+                ", awayTeam='" + awayTeam + '\'' +
+                ", commenceTime=" + commenceTime +
+                ", homeOdds=" + homeOdds +
+                ", awayOdds=" + awayOdds +
+                '}';
+    }
+}
+```
+
+## File: src/main/java/com/dialodds/seasonsbot/JDAInitializer.java
+
+```java
+package com.dialodds.seasonsbot;
+
+import net.dv8tion.jda.api.JDABuilder;
+import net.dv8tion.jda.api.requests.GatewayIntent;
+import net.dv8tion.jda.api.utils.cache.CacheFlag;
+import org.springframework.stereotype.Component;
+
+import javax.annotation.PostConstruct;
+
+@Component
+public class JDAInitializer {
+
+    private final CommandHandler commandHandler;
+
+    public JDAInitializer(CommandHandler commandHandler) {
+        this.commandHandler = commandHandler;
+    }
+
+    @PostConstruct
+    public void initJDA() throws Exception {
+        String token = System.getProperty("DISCORD_BOT_TOKEN");
+        if (token == null || token.isEmpty()) {
+            throw new IllegalStateException("DISCORD_BOT_TOKEN is not set");
+        }
+
+        JDABuilder.createDefault(token)
+            .enableIntents(GatewayIntent.GUILD_MESSAGES, GatewayIntent.MESSAGE_CONTENT)
+            .disableCache(CacheFlag.MEMBER_OVERRIDES, CacheFlag.VOICE_STATE)
+            .setBulkDeleteSplittingEnabled(false)
+            .setLargeThreshold(50)
+            .addEventListeners(commandHandler)
+            .build();
+    }
+}
+```
+
+## File: src/main/java/com/dialodds/seasonsbot/Season.java
+
+```java
+package com.dialodds.seasonsbot;
+
+import java.util.Date;
+import java.time.Instant;
+import com.fasterxml.jackson.annotation.JsonProperty;
+
+public class Season {
+    private int id;
+
+    @JsonProperty("start_week")
+    private int startWeek;
+
+    @JsonProperty("end_week")
+    private int endWeek;
+
+    @JsonProperty("initial_coins")
+    private int initialCoins;
+
+    @JsonProperty("created_at")
+    private Date createdAt;
+
+    @JsonProperty("is_active")
+    private boolean isActive;
+
+    public Season() {}
+
+    public Season(int id, int startWeek, int endWeek, int initialCoins, Date createdAt, boolean isActive) {
+        this.id = id;
+        this.startWeek = startWeek;
+        this.endWeek = endWeek;
+        this.initialCoins = initialCoins;
+        this.createdAt = createdAt;
+        this.isActive = isActive;
+    }
+
+    public int getId() {
+        return id;
+    }
+
+    public void setId(int id) {
+        this.id = id;
+    }
+
+    public int getStartWeek() {
+        return startWeek;
+    }
+
+    public void setStartWeek(int startWeek) {
+        this.startWeek = startWeek;
+    }
+
+    public int getEndWeek() {
+        return endWeek;
+    }
+
+    public void setEndWeek(int endWeek) {
+        this.endWeek = endWeek;
+    }
+
+    public int getInitialCoins() {
+        return initialCoins;
+    }
+
+    public void setInitialCoins(int initialCoins) {
+        this.initialCoins = initialCoins;
+    }
+
+    public Date getCreatedAt() {
+        return createdAt;
+    }
+
+    public Instant getCreatedAtInstant() {
+        return createdAt != null ? createdAt.toInstant() : null;
+    }
+
+    public void setCreatedAt(Date createdAt) {
+        this.createdAt = createdAt;
+    }
+
+    public boolean isActive() {
+        return isActive;
+    }
+
+    public void setActive(boolean active) {
+        isActive = active;
+    }
+}
+```
+
+## File: src/main/java/com/dialodds/seasonsbot/SeasonsBot.java
+
+```java
+package com.dialodds.seasonsbot;
+
+import net.dv8tion.jda.api.JDA;
+import net.dv8tion.jda.api.JDABuilder;
+import net.dv8tion.jda.api.entities.Activity;
+import net.dv8tion.jda.api.requests.GatewayIntent;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Component;
+import javax.annotation.PostConstruct;
+
+@Component
+public class SeasonsBot {
+
+    @Value("${discord.bot.token}")
+    private String token;
+
+    private final CommandHandler commandHandler;
+
+    public SeasonsBot(CommandHandler commandHandler) {
+        this.commandHandler = commandHandler;
+    }
+
+    @PostConstruct
+    public void start() throws Exception {
+        JDA jda = JDABuilder.createDefault(token)
+                .enableIntents(GatewayIntent.MESSAGE_CONTENT)
+                .setActivity(Activity.playing("NFL Betting Seasons"))
+                .addEventListeners(commandHandler)
+                .build();
+
+        jda.awaitReady();
+        System.out.println("SeasonsBot is ready!");
+    }
+}
+```
+
+## File: src/main/java/com/dialodds/seasonsbot/SeasonsbotApplication.java
+
+```java
+package com.dialodds.seasonsbot;
+
+import io.github.cdimascio.dotenv.Dotenv;
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.context.annotation.Bean;
+import org.springframework.web.client.RestTemplate;
+
+@SpringBootApplication
+public class SeasonsbotApplication {
+
+    public static void main(String[] args) {
+        Dotenv dotenv = Dotenv.configure().ignoreIfMissing().load();
+        
+        System.setProperty("DISCORD_BOT_TOKEN", dotenv.get("DISCORD_BOT_TOKEN", ""));
+        System.setProperty("API_BASE_URL", dotenv.get("API_BASE_URL", "http://localhost:8080"));
+        
+        SpringApplication.run(SeasonsbotApplication.class, args);
+    }
+
+    @Bean
+    public RestTemplate restTemplate() {
+        return new RestTemplate();
+    }
+
+    @Bean
+    public ApiClient apiClient(RestTemplate restTemplate) {
+        String baseUrl = System.getProperty("API_BASE_URL");
+        return new ApiClient(restTemplate, baseUrl);
+    }
+}
+```
+
+## File: src/main/java/com/dialodds/seasonsbot/User.java
+
+```java
+package com.dialodds.seasonsbot;
+
+public class User {
+    private int id;
+    private String discordId;
+    private String username;
+    private int coins;
+
+    public User() {}
+
+    public User(int id, String discordId, String username, int coins) {
+        this.id = id;
+        this.discordId = discordId;
+        this.username = username;
+        this.coins = coins;
+    }
+
+    public int getId() {
+        return id;
+    }
+
+    public void setId(int id) {
+        this.id = id;
+    }
+
+    public String getDiscordId() {
+        return discordId;
+    }
+
+    public void setDiscordId(String discordId) {
+        this.discordId = discordId;
+    }
+
+    public String getUsername() {
+        return username;
+    }
+
+    public void setUsername(String username) {
+        this.username = username;
+    }
+
+    public int getCoins() {
+        return coins;
+    }
+
+    public void setCoins(int coins) {
+        this.coins = coins;
+    }
+}
+```
+
+## File: src/test/java/com/dialodds/seasonsbot/CommandHandlerTest.java
+
+```java
+package com.dialodds.seasonsbot;
+
+// This broke at some point, will come back to it later....
+
+// import org.junit.jupiter.api.BeforeEach;
+// import org.junit.jupiter.api.Test;
+// import org.mockito.Mock;
+// import org.mockito.MockitoAnnotations;
+// import net.dv8tion.jda.api.entities.User;
+// import net.dv8tion.jda.api.entities.channel.unions.MessageChannelUnion;
+// import net.dv8tion.jda.api.events.message.MessageReceivedEvent;
+// import net.dv8tion.jda.api.requests.RestAction;
+// import net.dv8tion.jda.api.requests.restaction.MessageCreateAction;
+// import net.dv8tion.jda.api.entities.Message;
+// import net.dv8tion.jda.api.entities.MessageEmbed;
+// import org.springframework.http.ResponseEntity;
+// import java.util.*;
+// import java.time.Instant;
+
+// import static org.mockito.ArgumentMatchers.*;
+// import static org.mockito.Mockito.*;
+
+class CommandHandlerTest {
+
+    // private CommandHandler commandHandler;
+
+    // @Mock
+    // private ApiClient apiClient;
+
+    // @Mock
+    // private MessageReceivedEvent event;
+
+    // @Mock
+    // private User user;
+
+    // @Mock
+    // private MessageChannelUnion channel;
+
+    // @Mock
+    // private MessageCreateAction messageAction;
+
+    // @Mock
+    // private Message message;
+
+    // @SuppressWarnings("unchecked")
+    // @BeforeEach
+    // void setUp() {
+    //     MockitoAnnotations.openMocks(this);
+    //     commandHandler = new CommandHandler(apiClient);
+
+    //     when(event.getAuthor()).thenReturn(user);
+    //     when(event.getChannel()).thenReturn(channel);
+    //     when(channel.sendMessage(anyString())).thenReturn(messageAction);
+    //     when(channel.sendMessageEmbeds(any(MessageEmbed.class))).thenReturn(messageAction);
+    //     when(event.getMessage()).thenReturn(message);
+    //     when(channel.sendTyping()).thenReturn(mock(RestAction.class));
+    // }
+
+    // @Test
+    // void testCreateSeason() {
+    //     when(message.getContentRaw()).thenReturn("!create_season 1 17 1000");
+    //     when(apiClient.createSeason(1, 17, 1000)).thenReturn(ResponseEntity.ok(1));
+
+    //     commandHandler.onMessageReceived(event);
+
+    //     verify(apiClient).createSeason(1, 17, 1000);
+    //     verify(channel).sendMessageEmbeds(any(MessageEmbed.class));
+    // }
+
+    // @Test
+    // void testJoinSeason() {
+    //     when(message.getContentRaw()).thenReturn("!join_season 1");
+    //     when(user.getId()).thenReturn("123456");
+    //     when(user.getName()).thenReturn("TestUser");
+    //     when(apiClient.createUserAndJoinSeason("123456", "TestUser", 1)).thenReturn(ResponseEntity.ok().build());
+
+    //     commandHandler.onMessageReceived(event);
+
+    //     verify(apiClient).createUserAndJoinSeason("123456", "TestUser", 1);
+    //     verify(channel).sendMessageEmbeds(any(MessageEmbed.class));
+    // }
+
+    // @Test
+    // void testPlaceBet() {
+    //     when(message.getContentRaw()).thenReturn("!bet 1 1985 HOME 125");
+    //     when(user.getId()).thenReturn("123456");
+    //     when(user.getName()).thenReturn("TestUser");
+    //     when(apiClient.createUser("123456", "TestUser")).thenReturn(ResponseEntity.ok(1));
+    //     when(apiClient.getGameById(1985)).thenReturn(ResponseEntity.ok(createMockGameMap()));
+    //     when(apiClient.getUserCoins(1, 1)).thenReturn(ResponseEntity.ok(1000));
+    //     when(apiClient.placeBet(1, 1, 1985, "HOME", 125)).thenReturn(ResponseEntity.ok(1));
+
+    //     commandHandler.onMessageReceived(event);
+
+    //     verify(apiClient).createUser("123456", "TestUser");
+    //     verify(apiClient).getGameById(1985);
+    //     verify(apiClient).getUserCoins(1, 1);
+    //     verify(apiClient).placeBet(1, 1, 1985, "HOME", 125);
+    //     verify(channel).sendMessageEmbeds(any(MessageEmbed.class));
+    // }
+
+    // @Test
+    // void testMyBets() {
+    //     when(message.getContentRaw()).thenReturn("!my_bets 1");
+    //     when(user.getId()).thenReturn("123456");
+    //     when(user.getName()).thenReturn("TestUser");
+    //     when(apiClient.createUser("123456", "TestUser")).thenReturn(ResponseEntity.ok(1));
+    //     when(apiClient.getUserBets(1, 1)).thenReturn(ResponseEntity.ok(createMockBetsList()));
+
+    //     commandHandler.onMessageReceived(event);
+
+    //     verify(apiClient).createUser("123456", "TestUser");
+    //     verify(apiClient).getUserBets(1, 1);
+    //     verify(channel).sendMessageEmbeds(any(MessageEmbed.class));
+    // }
+
+    // @Test
+    // void testBalance() {
+    //     when(message.getContentRaw()).thenReturn("!balance 1");
+    //     when(user.getId()).thenReturn("123456");
+    //     when(user.getName()).thenReturn("TestUser");
+    //     when(apiClient.createUser("123456", "TestUser")).thenReturn(ResponseEntity.ok(1));
+    //     when(apiClient.getUserCoins(1, 1)).thenReturn(ResponseEntity.ok(1000));
+    //     when(apiClient.getSeasonById(1)).thenReturn(ResponseEntity.ok(createMockSeason()));
+
+    //     commandHandler.onMessageReceived(event);
+
+    //     verify(apiClient).createUser("123456", "TestUser");
+    //     verify(apiClient).getUserCoins(1, 1);
+    //     verify(apiClient).getSeasonById(1);
+    //     verify(channel).sendMessageEmbeds(any(MessageEmbed.class));
+    // }
+
+    // @Test
+    // void testLeaderboard() {
+    //     when(message.getContentRaw()).thenReturn("!leaderboard 1");
+    //     when(apiClient.getUsersBySeason(1)).thenReturn(ResponseEntity.ok(createMockLeaderboard()));
+    //     when(user.getId()).thenReturn("123456");
+
+    //     commandHandler.onMessageReceived(event);
+
+    //     verify(apiClient).getUsersBySeason(1);
+    //     verify(channel).sendMessageEmbeds(any(MessageEmbed.class));
+    // }
+
+    // @Test
+    // void testSeasonInfo() {
+    //     when(message.getContentRaw()).thenReturn("!season_info 1");
+    //     when(apiClient.getSeasonById(1)).thenReturn(ResponseEntity.ok(createMockSeason()));
+
+    //     commandHandler.onMessageReceived(event);
+
+    //     verify(apiClient).getSeasonById(1);
+    //     verify(channel).sendMessageEmbeds(any(MessageEmbed.class));
+    // }
+
+    // @Test
+    // void testActiveSeasons() {
+    //     when(message.getContentRaw()).thenReturn("!active_seasons");
+    //     when(apiClient.getActiveSeasons()).thenReturn(ResponseEntity.ok(createMockActiveSeasons()));
+
+    //     commandHandler.onMessageReceived(event);
+
+    //     verify(apiClient).getActiveSeasons();
+    //     verify(channel).sendMessageEmbeds(any(MessageEmbed.class));
+    // }
+
+    // @Test
+    // void testNflWeeks() {
+    //     when(message.getContentRaw()).thenReturn("!nfl_weeks");
+    //     when(apiClient.getNflWeeks()).thenReturn(ResponseEntity.ok(Arrays.asList(1, 2, 3, 4, 5)));
+
+    //     commandHandler.onMessageReceived(event);
+
+    //     verify(apiClient).getNflWeeks();
+    //     verify(channel).sendMessageEmbeds(any(MessageEmbed.class));
+    // }
+
+    // @Test
+    // void testNflGames() {
+    //     when(message.getContentRaw()).thenReturn("!nfl_games 1");
+    //     when(apiClient.getNflGamesByWeek(1)).thenReturn(ResponseEntity.ok(createMockGamesList()));
+
+    //     commandHandler.onMessageReceived(event);
+
+    //     verify(apiClient).getNflGamesByWeek(1);
+    //     verify(channel).sendMessageEmbeds(any(MessageEmbed.class));
+    // }
+
+    // @Test
+    // void testTeamSchedule() {
+    //     when(message.getContentRaw()).thenReturn("!team_schedule Dallas Cowboys");
+    //     when(apiClient.getTeamSchedule("Dallas Cowboys")).thenReturn(ResponseEntity.ok(createMockGamesList()));
+
+    //     commandHandler.onMessageReceived(event);
+
+    //     verify(apiClient).getTeamSchedule("Dallas Cowboys");
+    //     verify(channel).sendMessageEmbeds(any(MessageEmbed.class));
+    // }
+
+    // @Test
+    // void testHelp() {
+    //     when(message.getContentRaw()).thenReturn("!help");
+
+    //     commandHandler.onMessageReceived(event);
+
+    //     verify(channel).sendMessageEmbeds(any(MessageEmbed.class));
+    // }
+
+    // @Test
+    // void testDeleteSeason() {
+    //     when(message.getContentRaw()).thenReturn("!delete_season 1");
+    //     Map<String, Object> response = new HashMap<>();
+    //     response.put("deleted", true);
+    //     response.put("message", "Season deleted successfully");
+    //     when(apiClient.deleteSeason(1)).thenReturn(ResponseEntity.ok(response));
+
+    //     commandHandler.onMessageReceived(event);
+
+    //     verify(apiClient).deleteSeason(1);
+    //     verify(channel).sendMessageEmbeds(any(MessageEmbed.class));
+    // }
+
+    // private Map<String, Object> createMockGameMap() {
+    //     Map<String, Object> game = new HashMap<>();
+    //     game.put("id", 1985);
+    //     game.put("home_team", "Dallas Cowboys");
+    //     game.put("away_team", "New York Giants");
+    //     game.put("commence_time", "2024-09-10T20:00:00Z");
+    //     game.put("home_odds", 1.8);
+    //     game.put("away_odds", 2.1);
+    //     return game;
+    // }
+
+    // private List<Bet> createMockBetsList() {
+    //     List<Bet> bets = new ArrayList<>();
+    //     bets.add(new Bet(1, 1, 1, 1985, "HOME", 125, Date.from(Instant.now()), "WIN", "Dallas Cowboys", "New York Giants"));
+    //     return bets;
+    // }
+
+    // private Map<String, Object> createMockSeason() {
+    //     Map<String, Object> season = new HashMap<>();
+    //     season.put("id", 1);
+    //     season.put("start_week", 1);
+    //     season.put("end_week", 17);
+    //     season.put("initial_coins", 1000);
+    //     season.put("created_at", "2024-09-01T00:00:00Z");
+    //     return season;
+    // }
+
+    // private List<com.dialodds.seasonsbot.User> createMockLeaderboard() {
+    //     List<com.dialodds.seasonsbot.User> leaderboard = new ArrayList<>();
+    //     leaderboard.add(new com.dialodds.seasonsbot.User(1, "123", "User1", 1500));
+    //     leaderboard.add(new com.dialodds.seasonsbot.User(2, "456", "User2", 1200));
+    //     return leaderboard;
+    // }
+
+    // private List<Season> createMockActiveSeasons() {
+    //     List<Season> seasons = new ArrayList<>();
+    //     seasons.add(new Season(1, 1, 17, 1000, Date.from(Instant.now()), true));
+    //     return seasons;
+    // }
+
+    // private List<Game> createMockGamesList() {
+    //     List<Game> games = new ArrayList<>();
+    //     games.add(new Game(1985, "Dallas Cowboys", "New York Giants", Instant.parse("2024-09-10T20:00:00Z"), 1.8, 2.1));
+    //     return games;
+    // }
+}
+```
+
+## File: src/test/java/com/dialodds/seasonsbot/SeasonsbotApplicationTests.java
+
+```java
+package com.dialodds.seasonsbot;
+
+import org.junit.jupiter.api.Test;
+import org.springframework.boot.test.context.SpringBootTest;
+
+@SpringBootTest
+class SeasonsbotApplicationTests {
+
+	@Test
+	void contextLoads() {
+	}
+
+}
+
+```
+
