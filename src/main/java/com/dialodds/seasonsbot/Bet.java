@@ -23,7 +23,7 @@ public class Bet {
     @JsonProperty("created_at")
     private Date createdAt;
 
-    private String status;
+    private String result;
 
     @JsonProperty("home_team")
     private String homeTeam;
@@ -33,7 +33,7 @@ public class Bet {
 
     public Bet() {}
 
-    public Bet(int id, int userId, int seasonId, int gameId, String betType, int amount, Date createdAt, String status, String homeTeam, String awayTeam) {
+    public Bet(int id, int userId, int seasonId, int gameId, String betType, int amount, Date createdAt, String result, String homeTeam, String awayTeam) {
         this.id = id;
         this.userId = userId;
         this.seasonId = seasonId;
@@ -41,7 +41,7 @@ public class Bet {
         this.betType = betType;
         this.amount = amount;
         this.createdAt = createdAt;
-        this.status = status;
+        this.result = result;
         this.homeTeam = homeTeam;
         this.awayTeam = awayTeam;
     }
@@ -102,12 +102,12 @@ public class Bet {
         this.createdAt = createdAt;
     }
 
-    public String getStatus() {
-        return status;
+    public String getResult() {
+        return result;
     }
 
-    public void setStatus(String status) {
-        this.status = status;
+    public void setResult(String result) {
+        this.result = result;
     }
 
     public String getHomeTeam() {

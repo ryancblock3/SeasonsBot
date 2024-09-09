@@ -358,18 +358,20 @@ public class CommandHandler extends ListenerAdapter {
             }
             int betId = betIdWrapper.intValue();
 
+            String awayTeam = (String) gameDetails.get("away_team");
+            String homeTeam = (String) gameDetails.get("home_team");
+            String teamBetOn = betType.equals("HOME") ? homeTeam : awayTeam;
             String odds = betType.equals("HOME") ? String.valueOf(gameDetails.get("home_odds"))
                     : String.valueOf(gameDetails.get("away_odds"));
 
             EmbedBuilder successEmbed = new EmbedBuilder()
                     .setColor(Color.GREEN)
                     .setTitle("Bet Placed Successfully")
-                    .setDescription("Your bet has been placed successfully!")
-                    .addField("Bet ID", String.valueOf(betId), true)
-                    .addField("Season ID", String.valueOf(seasonId), true)
-                    .addField("Game", gameDetails.get("home_team") + " vs " + gameDetails.get("away_team"), false)
+                    .setDescription("Your bet on the " + teamBetOn + " has been placed successfully!")
+                    .addField("Bet Details", String.format("Bet ID: %d | Season ID: %d", betId, seasonId), false)
+                    .addField("Game", awayTeam + " vs " + homeTeam, false)
+                    .addField("Bet Amount", amount + " coins", true)
                     .addField("Bet Type", betType, true)
-                    .addField("Amount", amount + " coins", true)
                     .addField("Odds", odds, true)
                     .setFooter("Placed by " + username, event.getAuthor().getEffectiveAvatarUrl())
                     .setTimestamp(Instant.now());
@@ -441,9 +443,10 @@ public class CommandHandler extends ListenerAdapter {
 
             for (Bet bet : bets) {
                 String betStatus = getBetStatus(bet);
-                String betInfo = String.format("%s vs %s\nBet: %s %d coins\nResult: %s",
+                String betOnTeam = bet.getBetType().equalsIgnoreCase("HOME") ? bet.getHomeTeam() : bet.getAwayTeam();
+                String betInfo = String.format("%s vs %s\nBet: %d coins on the %s\nResult: %s",
                         bet.getHomeTeam(), bet.getAwayTeam(),
-                        bet.getBetType(), bet.getAmount(),
+                        bet.getAmount(), betOnTeam,
                         betStatus);
 
                 betsEmbed.addField("Bet ID: " + bet.getId(), betInfo, false);
@@ -463,11 +466,11 @@ public class CommandHandler extends ListenerAdapter {
     }
 
     private String getBetStatus(Bet bet) {
-        String status = bet.getStatus();
-        if (status == null || status.isEmpty()) {
+        String result = bet.getResult();
+        if (result == null || result.isEmpty()) {
             return "Pending";
         }
-        return status.equals("WIN") ? "Won" : "Lost";
+        return result.equalsIgnoreCase("won") ? "Won" : "Lost";
     }
 
     private void handleBalance(MessageReceivedEvent event, String[] args) {
@@ -1122,12 +1125,12 @@ public class CommandHandler extends ListenerAdapter {
 
     private File createLogoImage(String awayTeam, String homeTeam) throws IOException {
         String[] possiblePaths = {
-            System.getenv("LOGO_PATH"),
-            "/app/logos",
-            "src/main/resources/static/logos",
-            "logos"
+                System.getenv("LOGO_PATH"),
+                "/app/logos",
+                "src/main/resources/static/logos",
+                "logos"
         };
-    
+
         String logoPath = null;
         for (String path : possiblePaths) {
             if (path != null && new File(path).exists()) {
@@ -1135,29 +1138,29 @@ public class CommandHandler extends ListenerAdapter {
                 break;
             }
         }
-    
+
         if (logoPath == null) {
             throw new FileNotFoundException("Could not find logos directory");
         }
-    
+
         BufferedImage awayLogo = ImageIO.read(new File(logoPath, getTeamLogoFilename(awayTeam)));
         BufferedImage homeLogo = ImageIO.read(new File(logoPath, getTeamLogoFilename(homeTeam)));
-    
+
         int width = awayLogo.getWidth() + homeLogo.getWidth() + 100;
         int height = Math.max(awayLogo.getHeight(), homeLogo.getHeight()) + 60;
-    
+
         BufferedImage combined = new BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB);
         Graphics g = combined.getGraphics();
-    
+
         g.setFont(new Font("Arial", Font.BOLD, 20));
         g.drawString(awayTeam, 10, 25);
         g.drawString(homeTeam, awayLogo.getWidth() + 110, 25);
-    
+
         g.drawImage(awayLogo, 0, 30, null);
         g.drawImage(homeLogo, awayLogo.getWidth() + 100, 30, null);
-    
+
         g.dispose();
-    
+
         File tempFile = File.createTempFile("game_logos", ".png");
         ImageIO.write(combined, "PNG", tempFile);
         return tempFile;
