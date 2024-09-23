@@ -82,9 +82,3 @@ The bot uses environment variables for configuration. Make sure to set the follo
 ## Integration with DialOdds API
 
 SeasonsBot communicates with the DialOdds API to fetch game data, manage bets, and retrieve user information. Ensure that the DialOdds API is running and accessible at the specified `API_BASE_URL`.
-
-## Acknowledgments
-
-- JDA (Java Discord API) for Discord integration
-- DialOdds API for providing the backend infrastructure
-- The Discord community for inspiration and support
