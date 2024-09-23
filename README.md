@@ -2,7 +2,7 @@
 
 ## Overview
 
-SeasonsBot is a Discord bot designed to interact with the DialOdds API, providing a user-friendly interface for NFL betting seasons. It allows users to manage their bets, view game information, and participate in betting seasons directly through Discord.
+SeasonsBot is a Discord bot designed to interact with the DialOdds API, providing a user-friendly interface for NFL betting seasons. It allows users to manage their bets, view game information, and participate in betting seasons directly through Discord, all with fake currency.
 
 ## Features
 
@@ -82,14 +82,6 @@ The bot uses environment variables for configuration. Make sure to set the follo
 ## Integration with DialOdds API
 
 SeasonsBot communicates with the DialOdds API to fetch game data, manage bets, and retrieve user information. Ensure that the DialOdds API is running and accessible at the specified `API_BASE_URL`.
-
-## Contributing
-
-Please read [CONTRIBUTING.md](CONTRIBUTING.md) for details on our code of conduct and the process for submitting pull requests.
-
-## License
-
-This project is licensed under the MIT License - see the [LICENSE.md](LICENSE.md) file for details.
 
 ## Acknowledgments
 
