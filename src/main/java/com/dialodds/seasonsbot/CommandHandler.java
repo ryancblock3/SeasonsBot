@@ -24,6 +24,7 @@ import java.awt.Graphics;
 import java.awt.Font;
 import java.awt.image.BufferedImage;
 import java.io.File;
+import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -34,7 +35,7 @@ import java.time.format.DateTimeParseException;
 import java.time.temporal.ChronoUnit;
 import java.util.*;
 import java.util.concurrent.*;
-
+import java.util.stream.Collectors;
 
 @Component
 public class CommandHandler extends ListenerAdapter {
@@ -136,7 +137,6 @@ public class CommandHandler extends ListenerAdapter {
         }
         event.getChannel().sendMessageEmbeds(errorEmbed.build()).queue();
     }
-
 
     private void handleCreateSeason(MessageReceivedEvent event, String[] args) {
         if (args.length != 4) {
@@ -273,7 +273,6 @@ public class CommandHandler extends ListenerAdapter {
         }
     }
 
-
     private void handlePlaceBet(MessageReceivedEvent event, String[] args) {
         if (args.length != 5) {
             sendErrorEmbed(event, "Invalid Command Usage",
@@ -359,18 +358,20 @@ public class CommandHandler extends ListenerAdapter {
             }
             int betId = betIdWrapper.intValue();
 
+            String awayTeam = (String) gameDetails.get("away_team");
+            String homeTeam = (String) gameDetails.get("home_team");
+            String teamBetOn = betType.equals("HOME") ? homeTeam : awayTeam;
             String odds = betType.equals("HOME") ? String.valueOf(gameDetails.get("home_odds"))
                     : String.valueOf(gameDetails.get("away_odds"));
 
             EmbedBuilder successEmbed = new EmbedBuilder()
                     .setColor(Color.GREEN)
                     .setTitle("Bet Placed Successfully")
-                    .setDescription("Your bet has been placed successfully!")
-                    .addField("Bet ID", String.valueOf(betId), true)
-                    .addField("Season ID", String.valueOf(seasonId), true)
-                    .addField("Game", gameDetails.get("home_team") + " vs " + gameDetails.get("away_team"), false)
+                    .setDescription("Your bet on the " + teamBetOn + " has been placed successfully!")
+                    .addField("Bet Details", String.format("Bet ID: %d | Season ID: %d", betId, seasonId), false)
+                    .addField("Game", awayTeam + " vs " + homeTeam, false)
+                    .addField("Bet Amount", amount + " coins", true)
                     .addField("Bet Type", betType, true)
-                    .addField("Amount", amount + " coins", true)
                     .addField("Odds", odds, true)
                     .setFooter("Placed by " + username, event.getAuthor().getEffectiveAvatarUrl())
                     .setTimestamp(Instant.now());
@@ -442,9 +443,10 @@ public class CommandHandler extends ListenerAdapter {
 
             for (Bet bet : bets) {
                 String betStatus = getBetStatus(bet);
-                String betInfo = String.format("%s vs %s\nBet: %s %d coins\nResult: %s",
+                String betOnTeam = bet.getBetType().equalsIgnoreCase("HOME") ? bet.getHomeTeam() : bet.getAwayTeam();
+                String betInfo = String.format("%s vs %s\nBet: %d coins on the %s\nResult: %s",
                         bet.getHomeTeam(), bet.getAwayTeam(),
-                        bet.getBetType(), bet.getAmount(),
+                        bet.getAmount(), betOnTeam,
                         betStatus);
 
                 betsEmbed.addField("Bet ID: " + bet.getId(), betInfo, false);
@@ -464,13 +466,12 @@ public class CommandHandler extends ListenerAdapter {
     }
 
     private String getBetStatus(Bet bet) {
-        String status = bet.getStatus();
-        if (status == null || status.isEmpty()) {
+        String result = bet.getResult();
+        if (result == null || result.isEmpty()) {
             return "Pending";
         }
-        return status.equals("WIN") ? "Won" : "Lost";
+        return result.equalsIgnoreCase("won") ? "Won" : "Lost";
     }
-
 
     private void handleBalance(MessageReceivedEvent event, String[] args) {
         if (args.length != 2) {
@@ -565,68 +566,68 @@ public class CommandHandler extends ListenerAdapter {
         }
     }
 
-
     private void handleLeaderboard(MessageReceivedEvent event, String[] args) {
-    if (args.length != 2) {
-        sendErrorEmbed(event, "Invalid Command Usage",
-                "Usage: `!leaderboard <season_id>`",
-                "Example: `!leaderboard 123`");
-        return;
-    }
-
-    try {
-        int seasonId = Integer.parseInt(args[1]);
-
-        ResponseEntity<List<User>> leaderboardResponse = apiClient.getUsersBySeason(seasonId);
-        List<User> leaderboard = leaderboardResponse.getBody();
-
-        if (leaderboard == null || leaderboard.isEmpty()) {
-            EmbedBuilder noUsersEmbed = new EmbedBuilder()
-                    .setColor(Color.BLUE)
-                    .setTitle("No Users Found")
-                    .setDescription("There are no users participating in this season yet.")
-                    .setFooter("Season ID: " + seasonId)
-                    .setTimestamp(Instant.now());
-            event.getChannel().sendMessageEmbeds(noUsersEmbed.build()).queue();
+        if (args.length != 2) {
+            sendErrorEmbed(event, "Invalid Command Usage",
+                    "Usage: `!leaderboard <season_id>`",
+                    "Example: `!leaderboard 123`");
             return;
         }
 
-        leaderboard.sort(Comparator.comparing(User::getCoins).reversed());
+        try {
+            int seasonId = Integer.parseInt(args[1]);
 
-        EmbedBuilder leaderboardEmbed = new EmbedBuilder()
-                .setColor(new Color(218, 165, 32))
-                .setTitle("Leaderboard for Season " + seasonId)
-                .setDescription("Here are the top performers for this season:")
-                .setFooter("Requested by " + event.getAuthor().getName(), event.getAuthor().getEffectiveAvatarUrl())
-                .setTimestamp(Instant.now());
+            ResponseEntity<List<User>> leaderboardResponse = apiClient.getUsersBySeason(seasonId);
+            List<User> leaderboard = leaderboardResponse.getBody();
 
-        for (int i = 0; i < Math.min(10, leaderboard.size()); i++) {
-            User user = leaderboard.get(i);
-            String medal = getMedalEmoji(i);
-            String userInfo = String.format("%s **%s**\nCoins: %d", medal, user.getUsername(), user.getCoins());
-            leaderboardEmbed.addField(String.format("%d.", i + 1), userInfo, false);
+            if (leaderboard == null || leaderboard.isEmpty()) {
+                EmbedBuilder noUsersEmbed = new EmbedBuilder()
+                        .setColor(Color.BLUE)
+                        .setTitle("No Users Found")
+                        .setDescription("There are no users participating in this season yet.")
+                        .setFooter("Season ID: " + seasonId)
+                        .setTimestamp(Instant.now());
+                event.getChannel().sendMessageEmbeds(noUsersEmbed.build()).queue();
+                return;
+            }
+
+            leaderboard.sort(Comparator.comparing(User::getCoins).reversed());
+
+            EmbedBuilder leaderboardEmbed = new EmbedBuilder()
+                    .setColor(new Color(218, 165, 32))
+                    .setTitle("Leaderboard for Season " + seasonId)
+                    .setDescription("Here are the top performers for this season:")
+                    .setFooter("Requested by " + event.getAuthor().getName(), event.getAuthor().getEffectiveAvatarUrl())
+                    .setTimestamp(Instant.now());
+
+            for (int i = 0; i < Math.min(10, leaderboard.size()); i++) {
+                User user = leaderboard.get(i);
+                String medal = getMedalEmoji(i);
+                String userInfo = String.format("%s **%s**\nCoins: %d", medal, user.getUsername(), user.getCoins());
+                leaderboardEmbed.addField(String.format("%d.", i + 1), userInfo, false);
+            }
+
+            String requesterId = event.getAuthor().getId();
+            int requesterPosition = findUserPosition(leaderboard, requesterId);
+            if (requesterPosition > 10) {
+                User requesterInfo = leaderboard.get(requesterPosition - 1);
+                String userInfo = String.format("**%s**\nCoins: %d", requesterInfo.getUsername(),
+                        requesterInfo.getCoins());
+                leaderboardEmbed.addField("Your Position: " + requesterPosition, userInfo, false);
+            }
+
+            event.getChannel().sendMessageEmbeds(leaderboardEmbed.build()).queue();
+        } catch (NumberFormatException e) {
+            sendErrorEmbed(event, "Invalid Season ID",
+                    "Please enter a valid number for the season ID.",
+                    "Correct Usage: `!leaderboard <season_id>`",
+                    "Example: `!leaderboard 123`");
+        } catch (Exception e) {
+            sendErrorEmbed(event, "Failed to Retrieve Leaderboard",
+                    "An error occurred while retrieving the leaderboard. Please try again.",
+                    "Error Details: " + e.getMessage());
         }
-
-        String requesterId = event.getAuthor().getId();
-        int requesterPosition = findUserPosition(leaderboard, requesterId);
-        if (requesterPosition > 10) {
-            User requesterInfo = leaderboard.get(requesterPosition - 1);
-            String userInfo = String.format("**%s**\nCoins: %d", requesterInfo.getUsername(), requesterInfo.getCoins());
-            leaderboardEmbed.addField("Your Position: " + requesterPosition, userInfo, false);
-        }
-
-        event.getChannel().sendMessageEmbeds(leaderboardEmbed.build()).queue();
-    } catch (NumberFormatException e) {
-        sendErrorEmbed(event, "Invalid Season ID",
-                "Please enter a valid number for the season ID.",
-                "Correct Usage: `!leaderboard <season_id>`",
-                "Example: `!leaderboard 123`");
-    } catch (Exception e) {
-        sendErrorEmbed(event, "Failed to Retrieve Leaderboard",
-                "An error occurred while retrieving the leaderboard. Please try again.",
-                "Error Details: " + e.getMessage());
     }
-}
 
     private String getMedalEmoji(int position) {
         switch (position) {
@@ -650,7 +651,6 @@ public class CommandHandler extends ListenerAdapter {
         }
         return leaderboard.size() + 1;
     }
-
 
     private void handleSeasonInfo(MessageReceivedEvent event, String[] args) {
         if (args.length != 2) {
@@ -738,7 +738,6 @@ public class CommandHandler extends ListenerAdapter {
         }
         return progressBar.toString();
     }
-
 
     private void handleActiveSeasons(MessageReceivedEvent event) {
         try {
@@ -870,9 +869,9 @@ public class CommandHandler extends ListenerAdapter {
             int week = Integer.parseInt(args[1]);
 
             ResponseEntity<List<Game>> gamesResponse = apiClient.getNflGamesByWeek(week);
-            List<Game> games = gamesResponse.getBody();
+            List<Game> allGames = gamesResponse.getBody();
 
-            if (games == null || games.isEmpty()) {
+            if (allGames == null || allGames.isEmpty()) {
                 EmbedBuilder noGamesEmbed = new EmbedBuilder()
                         .setColor(Color.ORANGE)
                         .setTitle("No NFL Games Available")
@@ -884,30 +883,26 @@ public class CommandHandler extends ListenerAdapter {
                 return;
             }
 
-            String messageId = UUID.randomUUID().toString();
-            List<Game> gamesList = new ArrayList<>(games);
+            // Filter games for the requested week
+            List<Game> weekGames = allGames.stream()
+                    .filter(game -> getWeekNumber(game.getCommenceTime()) == week)
+                    .collect(Collectors.toList());
 
-            if (gamesList.isEmpty()) {
-                sendErrorEmbed(event, "No Game Data",
-                        "No game data available for Week " + week + ".",
-                        "Please try again later or contact support if the issue persists.");
+            if (weekGames.isEmpty()) {
+                sendErrorEmbed(event, "No Games Found",
+                        "No games found for Week " + week + ".",
+                        "Please try a different week number.");
                 return;
             }
 
-            Game firstGame = gamesList.get(0);
+            String messageId = UUID.randomUUID().toString();
+            Game firstGame = weekGames.get(0);
 
-            EmbedBuilder initialEmbed = createGameEmbed(firstGame, week, 1, gamesList.size());
-            List<Button> buttons = createNavigationButtons(messageId, 0, gamesList.size());
+            EmbedBuilder initialEmbed = createGameEmbed(firstGame, week, 1, weekGames.size());
+            List<Button> buttons = createNavigationButtons(messageId, 0, weekGames.size());
 
             String awayTeam = firstGame.getAwayTeam();
             String homeTeam = firstGame.getHomeTeam();
-
-            if (awayTeam == null || homeTeam == null) {
-                sendErrorEmbed(event, "Invalid Game Data",
-                        "The game data is missing team information.",
-                        "Please try again later or contact support if the issue persists.");
-                return;
-            }
 
             try {
                 File logoImage = createLogoImage(awayTeam, homeTeam);
@@ -916,7 +911,7 @@ public class CommandHandler extends ListenerAdapter {
                         .addFiles(FileUpload.fromData(logoImage, "game_logos.png"))
                         .queue(message -> {
                             logoImage.delete();
-                            activeGamesCache.put(messageId, gamesList);
+                            activeGamesCache.put(messageId, weekGames);
                         });
             } catch (IOException e) {
                 sendErrorEmbed(event, "Logo Generation Failed",
@@ -1120,15 +1115,36 @@ public class CommandHandler extends ListenerAdapter {
         }
         LocalDate gameDate = gameTime.atZone(ZoneId.of("America/New_York")).toLocalDate();
         LocalDate seasonStartDate = LocalDate.of(2024, Month.SEPTEMBER, 5);
+        if (gameDate.getYear() > seasonStartDate.getYear()) {
+            // Handle games in the following year (e.g., Week 18)
+            return (int) (ChronoUnit.WEEKS.between(seasonStartDate, gameDate.withYear(seasonStartDate.getYear())) + 1);
+        }
         long weeksSinceStart = ChronoUnit.WEEKS.between(seasonStartDate, gameDate);
         return (int) weeksSinceStart + 1;
     }
 
     private File createLogoImage(String awayTeam, String homeTeam) throws IOException {
-        BufferedImage awayLogo = ImageIO
-                .read(new File("src/main/resources/static/logos/" + getTeamLogoFilename(awayTeam)));
-        BufferedImage homeLogo = ImageIO
-                .read(new File("src/main/resources/static/logos/" + getTeamLogoFilename(homeTeam)));
+        String[] possiblePaths = {
+                System.getenv("LOGO_PATH"),
+                "/app/logos",
+                "src/main/resources/static/logos",
+                "logos"
+        };
+
+        String logoPath = null;
+        for (String path : possiblePaths) {
+            if (path != null && new File(path).exists()) {
+                logoPath = path;
+                break;
+            }
+        }
+
+        if (logoPath == null) {
+            throw new FileNotFoundException("Could not find logos directory");
+        }
+
+        BufferedImage awayLogo = ImageIO.read(new File(logoPath, getTeamLogoFilename(awayTeam)));
+        BufferedImage homeLogo = ImageIO.read(new File(logoPath, getTeamLogoFilename(homeTeam)));
 
         int width = awayLogo.getWidth() + homeLogo.getWidth() + 100;
         int height = Math.max(awayLogo.getHeight(), homeLogo.getHeight()) + 60;
@@ -1158,42 +1174,50 @@ public class CommandHandler extends ListenerAdapter {
         EmbedBuilder helpEmbed = new EmbedBuilder()
                 .setColor(DISCORD_BLURPLE)
                 .setTitle("NFL Betting Bot Help")
-                .setDescription("Here are all the available commands:")
+                .setDescription("Welcome to the NFL Betting Bot! Here's a guide to all available commands:")
                 .setFooter("Requested by " + event.getAuthor().getName(), event.getAuthor().getEffectiveAvatarUrl())
                 .setTimestamp(Instant.now());
 
-        helpEmbed.addField("Season Management",
+        helpEmbed.addField("🏈 Season Management",
                 "`!create_season <start_week> <end_week> <initial_coins>` - Create a new season\n" +
                         "`!join_season <season_id>` - Join an existing season\n" +
                         "`!season_info <season_id>` - Get information about a season\n" +
-                        "`!active_seasons` - List all active seasons",
+                        "`!active_seasons` - List all active seasons\n",
                 false);
 
-        helpEmbed.addField("Betting",
+        helpEmbed.addField("💰 Betting",
                 "`!bet <season_id> <game_id> <bet_type> <amount>` - Place a bet\n" +
                         "`!my_bets <season_id>` - View your bets for a season\n" +
                         "`!balance <season_id>` - Check your balance for a season",
                 false);
 
-        helpEmbed.addField("NFL Information",
-                "`!nfl_weeks` - Get available NFL weeks\n" +
-                        "`!nfl_games <week>` - Get NFL games for a specific week\n" +
+        helpEmbed.addField("🏆 Leaderboard",
+                "`!leaderboard <season_id>` - View the leaderboard for a season", false);
+
+        helpEmbed.addField("📅 NFL Information",
+                "`!nfl_games <week>` - Get NFL games for a specific week\n" +
                         "`!team_schedule <team_name>` - Get schedule for a specific team",
                 false);
 
-        helpEmbed.addField("Leaderboard",
-                "`!leaderboard <season_id>` - View the leaderboard for a season", false);
-
-        helpEmbed.addField("Help",
-                "`!help` - Display this help message", false);
-
-        helpEmbed.addField("Examples",
-                "`!create_season 1 17 1000` - Create a season from week 1 to 17 with 1000 initial coins\n" +
-                        "`!bet 123 456 HOME 100` - Bet 100 coins on the home team for game 456 in season 123\n" +
-                        "`!team_schedule Dallas Cowboys` - Get the schedule for the Dallas Cowboys",
+        helpEmbed.addField("🧹 Utility",
+                "`!help` - Display this help message\n" +
+                        "`!purge <number>` - Delete a number of recent messages (admin only)",
                 false);
 
-        helpEmbed.addField("Need More Help?",
+        helpEmbed.addField("📘 Quick Start Guide",
+                "1. Join or create a season using `!join_season` or `!create_season`\n" +
+                        "2. Check available games with `!nfl_games`\n" +
+                        "3. Place a bet using the `!bet` command\n" +
+                        "4. Track your progress with `!my_bets` and `!balance`\n" +
+                        "5. Compare your standing using `!leaderboard`",
+                false);
+
+        helpEmbed.addField("🎲 Betting Example",
+                "To bet 100 coins on the home team for game 456 in season 123:\n" +
+                        "`!bet 123 456 HOME 100`",
+                false);
+
+        helpEmbed.addField("❓ Need More Help?",
                 "If you need more information about a specific command, try using it with no arguments or incorrect arguments. "
                         +
                         "The bot will provide you with more detailed usage instructions.",
@@ -1249,7 +1273,6 @@ public class CommandHandler extends ListenerAdapter {
                     .queue();
         }
     }
-
 
     private int getCurrentNflWeek() {
         LocalDate seasonStartDate = LocalDate.of(2024, Month.SEPTEMBER, 5);
